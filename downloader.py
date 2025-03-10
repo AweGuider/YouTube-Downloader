@@ -5,6 +5,13 @@ import tempfile
 import re
 import tkinter as tk
 from tkinter import filedialog, messagebox
+import threading
+
+### TODO:
+# - Show progress of merging (no user feedback at the moment)
+# - Stop download
+# - Stop merging
+# - When unfocusing, it might break/lag in long videos
 
 ### Command to create .exe out of .py
 # python -m PyInstaller --onefile downloader.py
@@ -16,6 +23,9 @@ from tkinter import filedialog, messagebox
 # Default output directory (current folder)
 output_directory = os.getcwd()
 selected_resolution = "1080p"  # Default resolution
+
+# For future implementation of stable progress UI update
+latest_progress = {"percent": "0%", "speed": "N/A", "eta": "Unknown"}
 
 def select_output_folder():
     """ Opens a dialog for the user to select an output folder. """
@@ -29,6 +39,27 @@ def set_resolution(value):
     """ Updates the selected resolution. """
     global selected_resolution
     selected_resolution = value
+    
+def clean_text(text):
+    """ Removes unwanted ANSI escape codes from yt-dlp output. """
+    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+    return ansi_escape.sub('', text)
+
+def progress_hook(d):
+    """ Updates the status label with download progress. """
+    if d['status'] == 'downloading':
+        percent = clean_text(d.get('_percent_str', '0%'))
+        speed = clean_text(d.get('_speed_str', 'N/A'))
+        eta = clean_text(d.get('_eta_str', 'Unknown'))
+
+        # Cleaned-up progress message with line breaks for better readability
+        progress_text = f"⏳ Progress: {percent}\n🚀 Speed: {speed}\n⏳ ETA: {eta}"
+
+        # Schedule UI update
+        root.after(1000, lambda: status_label.config(text=progress_text))
+    
+    elif d['status'] == 'finished':
+        root.after(1000, lambda: status_label.config(text="✅ Download Complete!"))
 
 def download_video_gui():
     """
@@ -44,9 +75,21 @@ def download_video_gui():
     download_button.config(state=tk.DISABLED)
     status_label.config(text="⏳ Downloading...")
 
-    # Run download function
+    # Run the download in a separate thread
+    download_thread = threading.Thread(target=download_video_thread, args=(url,))
+    download_thread.start()
+
+def download_video_thread(url):
+    """ Runs the video download process in a separate thread. """
+    global output_directory, selected_resolution
+
     success = download_video(url, output_directory, selected_resolution)
 
+    # Update the UI after the download completes (use root.after() to avoid threading issues)
+    root.after(0, lambda: update_ui_after_download(success))
+
+def update_ui_after_download(success):
+    """ Updates the UI after the download is completed. """
     if success:
         messagebox.showinfo("Success", f"Download completed successfully!\nSaved to: {output_directory}")
         status_label.config(text="✅ Download Complete!")
@@ -54,7 +97,7 @@ def download_video_gui():
         messagebox.showerror("Error", "Failed to download video. Check console for details.")
         status_label.config(text="❌ Download Failed")
 
-    # Re-enable the button
+    # Re-enable the download button
     download_button.config(state=tk.NORMAL)
 
 def download_video(url, output_dir, resolution):
@@ -100,7 +143,7 @@ def download_video(url, output_dir, resolution):
             'fragment_retries': 10,  # Retry failed downloads up to 10 times
             'nocheckcertificate': True,  # Prevent SSL issues
             'concurrent_fragments': 5,  # 🏎️ Download 5 fragments at once (adjustable)
-            # 'progress_hooks': [progress_hook],  # Show progress
+            'progress_hooks': [progress_hook],  # 🏎️ Show progress
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -117,32 +160,14 @@ def download_video(url, output_dir, resolution):
         print(f"❌ Error downloading video: {e}")
         return False
 
-# def progress_hook(d):
-#     """ Provides real-time feedback on the download progress. """
-#     if d['status'] == 'downloading':
-#         print(f"⏳ Downloading: {d['_percent_str']} at {d['_speed_str']}")
-#     elif d['status'] == 'finished':
-#         print("✅ Download complete.")
-
 def sanitize_filename(filename):
     """ Removes or replaces invalid characters in filenames """
     return re.sub(r'[<>:"/\\|?*]', '_', filename)  # Replaces invalid characters with "_"
 
-# Main script
-# if __name__ == "__main__":
-#     if len(sys.argv) < 2:
-#         print("Usage: python downloader.py <YouTube_URL> [output_directory]")
-#         sys.exit(1)
-
-#     video_url = sys.argv[1]
-#     output_directory = sys.argv[2] if len(sys.argv) > 2 else "."
-
-#     download_video(video_url, output_directory)
-
 # 🖥️ GUI Setup
 root = tk.Tk()
 root.title("YouTube Video Downloader")
-root.geometry("500x300")
+root.geometry("600x420")
 
 # Input field for URL
 tk.Label(root, text="Enter YouTube URL:", font=("Arial", 12)).pack(pady=5)
