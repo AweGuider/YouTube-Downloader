@@ -12,6 +12,7 @@ import threading
 # - Stop download
 # - Stop merging
 # - When unfocusing, it might break/lag in long videos
+# - Make Downloads as default output folder
 
 ### Command to create .exe out of .py
 # python -m PyInstaller --onefile downloader.py

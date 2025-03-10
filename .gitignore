@@ -1,0 +1,15 @@
+# Ignore compiled Python files
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignore PyInstaller build files
+build/
+dist/
+downloader.spec
+
+# Ignore system-specific files
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
