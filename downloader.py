@@ -5,79 +5,13 @@ import yt_dlp
 import tempfile
 import re
 
+### Command to create .exe out of .py
+# python -m PyInstaller --onefile downloader.py
+
 ### For testing
 # 1080p - https://www.youtube.com/watch?v=ps74zeevi-g
 # 720p - https://www.youtube.com/watch?v=cUM8OCBy6Ls
 
-# def download_video(url, output_filename="output.mp4"):
-#     """
-#     Downloads a YouTube video at 1080p with audio included.
-#     Saves the file in the specified output directory.
-#     """
-#     print("🎥 Fetching video and audio...")
-
-#     # Video & audio file paths
-#     video_file = "video.mp4.mkv"
-#     audio_file = "audio.m4a"
-
-#     # yt-dlp options
-#     ydl_opts = {
-#         'format': 'bestvideo[height=1080]+bestaudio',  # Best 1080p video + best audio
-#         'outtmpl': video_file,  # Save video
-#     }
-
-#     try:
-#         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-#             ydl.download([url])
-
-#         # Download audio separately (in case it's missing)
-#         audio_opts = {
-#             'format': 'bestaudio',
-#             'outtmpl': audio_file,
-#         }
-#         with yt_dlp.YoutubeDL(audio_opts) as ydl:
-#             ydl.download([url])
-
-#     except Exception as e:
-#         print(f"❌ Error downloading video/audio: {e}")
-#         return False
-
-#     # # Merge video and audio using FFmpeg
-#     # print("🔄 Merging video and audio with FFmpeg...")
-#     # merge_cmd = [
-#     #     "ffmpeg",
-#     #     "-i", video_file,
-#     #     "-i", audio_file,
-#     #     "-c:v", "copy",
-#     #     "-c:a", "aac",
-#     #     "-strict", "experimental",
-#     #     output_filename
-#     # ]
-    
-#     # try:
-#     #     subprocess.run(merge_cmd, check=True)
-#     #     print(f"✅ Download complete: {output_filename}")
-
-#     #     # Optional: Clean up raw video/audio files
-#     #     os.remove(video_file)
-#     #     os.remove(audio_file)
-
-#     # except subprocess.CalledProcessError:
-#     #     print("❌ Error merging video and audio.")
-#     #     return False
-
-#     print(f"✅ Download complete: {video_file}")
-
-#     return True
-
-# # Main script
-# if __name__ == "__main__":
-#     if len(sys.argv) < 2:
-#         print("Usage: python downloader.py <YouTube_URL>")
-#         sys.exit(1)
-
-#     video_url = sys.argv[1]
-#     download_video(video_url)
 
 
 def download_video(url, output_dir="."):
@@ -106,6 +40,9 @@ def download_video(url, output_dir="."):
                 '-b:a', '192k',  # Set audio bitrate to 192kbps for good quality
                 '-c:v', 'copy'  # Keep video unchanged (no re-encoding)
             ],
+            'fragment_retries': 10,  # Retry failed downloads up to 10 times
+            'nocheckcertificate': True,  # Prevent SSL issues
+            'concurrent_fragments': 5,  # 🏎️ Download 5 fragments at once (adjustable)
             'progress_hooks': [progress_hook],  # Show progress
         }
 
