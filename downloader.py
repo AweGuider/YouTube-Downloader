@@ -13,6 +13,12 @@ import threading
 # - Stop merging
 # - When unfocusing, it might break/lag in long videos
 # - Make Downloads as default output folder
+# - After Success/Unsuccess get rid of the temp folder (?)
+# - Set download's time instead of when video was uploaded
+# - First search for video. If it finds it, show available resolutions instead of manually checking
+# - Improve merging, for some reason it takes very long now
+# - Add a button to clear URL line instead of having to manually select all and erase
+# - At the end of download it shows a new window saying its been downloaded and user needs to press on it, potentially move it inside the YouTUbe Video Donwloader?
 
 ### Command to create .exe out of .py
 # python -m PyInstaller --onefile downloader.py
