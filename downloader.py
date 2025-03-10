@@ -13,6 +13,17 @@ from tkinter import filedialog, messagebox
 # 1080p - https://www.youtube.com/watch?v=ps74zeevi-g
 # 720p - https://www.youtube.com/watch?v=cUM8OCBy6Ls
 
+# Default output directory (current folder)
+output_directory = os.getcwd()
+
+def select_output_folder():
+    """ Opens a dialog for the user to select an output folder. """
+    global output_directory
+    folder_selected = filedialog.askdirectory()
+    if folder_selected:
+        output_directory = folder_selected
+        folder_label.config(text=f"📁 Save to: {output_directory}")
+
 def download_video_gui():
     """
     Function triggered when the Download button is clicked.
@@ -28,7 +39,7 @@ def download_video_gui():
     status_label.config(text="⏳ Downloading...")
 
     # Run download function
-    success = download_video(url)
+    success = download_video(url, output_directory)
 
     if success:
         messagebox.showinfo("Success", "Download completed successfully!")
@@ -111,16 +122,26 @@ def sanitize_filename(filename):
 # 🖥️ GUI Setup
 root = tk.Tk()
 root.title("YouTube Video Downloader")
-root.geometry("400x200")
+root.geometry("500x250")
 
-tk.Label(root, text="Enter YouTube URL:", font=("Arial", 12)).pack(pady=10)
-
+# Input field for URL
+tk.Label(root, text="Enter YouTube URL:", font=("Arial", 12)).pack(pady=5)
 url_entry = tk.Entry(root, width=50)
 url_entry.pack(pady=5)
 
+# Button to choose output folder
+folder_button = tk.Button(root, text="Choose Folder", command=select_output_folder)
+folder_button.pack(pady=5)
+
+# Label to show selected folder
+folder_label = tk.Label(root, text=f"📁 Save to: {output_directory}", font=("Arial", 10))
+folder_label.pack()
+
+# Download button
 download_button = tk.Button(root, text="Download", command=download_video_gui)
 download_button.pack(pady=10)
 
+# Status label
 status_label = tk.Label(root, text="", font=("Arial", 10))
 status_label.pack()
 
