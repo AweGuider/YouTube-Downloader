@@ -15,6 +15,7 @@ from tkinter import filedialog, messagebox
 
 # Default output directory (current folder)
 output_directory = os.getcwd()
+selected_resolution = "1080p"  # Default resolution
 
 def select_output_folder():
     """ Opens a dialog for the user to select an output folder. """
@@ -23,6 +24,11 @@ def select_output_folder():
     if folder_selected:
         output_directory = folder_selected
         folder_label.config(text=f"📁 Save to: {output_directory}")
+
+def set_resolution(value):
+    """ Updates the selected resolution. """
+    global selected_resolution
+    selected_resolution = value
 
 def download_video_gui():
     """
@@ -39,10 +45,10 @@ def download_video_gui():
     status_label.config(text="⏳ Downloading...")
 
     # Run download function
-    success = download_video(url, output_directory)
+    success = download_video(url, output_directory, selected_resolution)
 
     if success:
-        messagebox.showinfo("Success", "Download completed successfully!")
+        messagebox.showinfo("Success", f"Download completed successfully!\nSaved to: {output_directory}")
         status_label.config(text="✅ Download Complete!")
     else:
         messagebox.showerror("Error", "Failed to download video. Check console for details.")
@@ -51,9 +57,23 @@ def download_video_gui():
     # Re-enable the button
     download_button.config(state=tk.NORMAL)
 
-def download_video(url, output_dir="."):
+def download_video(url, output_dir, resolution):
+    """ Downloads a YouTube video in the selected resolution. """
+    print(f"🎥 Fetching video at {resolution} resolution...")
+    
+    # Map resolution to yt-dlp format selectors
+    resolution_map = {
+        "1080p": "bestvideo[height=1080]+bestaudio/best",
+        "720p": "bestvideo[height=720]+bestaudio/best",
+        "480p": "bestvideo[height=480]+bestaudio/best",
+        "360p": "bestvideo[height=360]+bestaudio/best",
+        "Highest Available": "bestvideo+bestaudio/best"
+    }
+    
+    selected_format = resolution_map.get(resolution, "bestvideo[height=1080]+bestaudio/best")
+
+
     """
-    Downloads a YouTube video at 1080p with audio included.
     Saves the file in the specified output directory.
     """
     print("🎥 Fetching video and audio...")
@@ -69,7 +89,7 @@ def download_video(url, output_dir="."):
 
         # yt-dlp options
         ydl_opts = {
-            'format': 'bestvideo[height=1080]+bestaudio/best',
+            'format': selected_format,
             'merge_output_format': 'mp4',  # Ensure output is always .mp4
             'outtmpl': video_file,  # Save using the sanitized filename
             'postprocessor_args': [
@@ -122,12 +142,20 @@ def sanitize_filename(filename):
 # 🖥️ GUI Setup
 root = tk.Tk()
 root.title("YouTube Video Downloader")
-root.geometry("500x250")
+root.geometry("500x300")
 
 # Input field for URL
 tk.Label(root, text="Enter YouTube URL:", font=("Arial", 12)).pack(pady=5)
 url_entry = tk.Entry(root, width=50)
 url_entry.pack(pady=5)
+
+# Dropdown menu for resolution selection
+tk.Label(root, text="Select Resolution:", font=("Arial", 10)).pack(pady=5)
+resolution_options = ["Highest Available", "1080p", "720p", "480p", "360p"]
+resolution_menu = tk.StringVar(root)
+resolution_menu.set(selected_resolution)  # Default value
+resolution_dropdown = tk.OptionMenu(root, resolution_menu, *resolution_options, command=set_resolution)
+resolution_dropdown.pack(pady=5)
 
 # Button to choose output folder
 folder_button = tk.Button(root, text="Choose Folder", command=select_output_folder)
