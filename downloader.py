@@ -11,7 +11,6 @@ import threading
 # - Show progress of merging (no user feedback at the moment)
 # - Stop download
 # - Stop merging
-# - When unfocusing, it might break/lag in long videos
 # - Make Downloads as default output folder
 # - After Success/Unsuccess get rid of the temp folder (?)
 # - Set download's time instead of when video was uploaded
@@ -19,6 +18,7 @@ import threading
 # - Improve merging, for some reason it takes very long now
 # - Add a button to clear URL line instead of having to manually select all and erase
 # - At the end of download it shows a new window saying its been downloaded and user needs to press on it, potentially move it inside the YouTUbe Video Donwloader?
+# - Have a test video URL already placed in the line so I dont need to paste it myself everytime
 
 ### Command to create .exe out of .py
 # python -m PyInstaller --onefile downloader.py
@@ -46,6 +46,15 @@ def set_resolution(value):
     """ Updates the selected resolution. """
     global selected_resolution
     selected_resolution = value
+
+def toggle_audio_mode():
+    """ Enables or disables audio-only mode and format selection. """
+    if audio_only.get():
+        resolution_dropdown.config(state=tk.DISABLED)  # Disable resolution dropdown
+        audio_format_dropdown.config(state=tk.NORMAL)  # Enable format dropdown
+    else:
+        resolution_dropdown.config(state=tk.NORMAL)  # Enable resolution dropdown
+        audio_format_dropdown.config(state=tk.DISABLED)  # Disable format dropdown
     
 def clean_text(text):
     """ Removes unwanted ANSI escape codes from yt-dlp output. """
@@ -108,64 +117,156 @@ def update_ui_after_download(success):
     download_button.config(state=tk.NORMAL)
 
 def download_video(url, output_dir, resolution):
-    """ Downloads a YouTube video in the selected resolution. """
-    print(f"🎥 Fetching video at {resolution} resolution...")
-    
-    # Map resolution to yt-dlp format selectors
-    resolution_map = {
-        "1080p": "bestvideo[height=1080]+bestaudio/best",
-        "720p": "bestvideo[height=720]+bestaudio/best",
-        "480p": "bestvideo[height=480]+bestaudio/best",
-        "360p": "bestvideo[height=360]+bestaudio/best",
-        "Highest Available": "bestvideo+bestaudio/best"
-    }
-    
-    selected_format = resolution_map.get(resolution, "bestvideo[height=1080]+bestaudio/best")
+    """ Downloads a YouTube video or extracts audio based on user selection. """
+    print(f"🎥 Fetching media... Audio Only: {audio_only.get()}")
 
+    # Ensure audio_format is always defined, whether in audio-only or video download mode
+    audio_format = selected_audio_format.get().lower() if audio_only.get() else None
 
-    """
-    Saves the file in the specified output directory.
-    """
-    print("🎥 Fetching video and audio...")
-
-    # Use a temporary directory for the download process
+    # Use a temporary directory for processing
     temp_dir = tempfile.mkdtemp()
 
     try:
         with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
-            info_dict = ydl.extract_info(url, download=False)  # Get metadata without downloading
-            video_title = sanitize_filename(info_dict.get('title', 'output'))  # Sanitize here
-            video_file = os.path.join(temp_dir, f"{video_title}.mp4")
+            info_dict = ydl.extract_info(url, download=False)
+            media_title = sanitize_filename(info_dict.get('title', 'output'))  # Sanitize filename
 
-        # yt-dlp options
-        ydl_opts = {
-            'format': selected_format,
-            'merge_output_format': 'mp4',  # Ensure output is always .mp4
-            'outtmpl': video_file,  # Save using the sanitized filename
-            'postprocessor_args': [
-                '-c:a', 'aac',  # Convert audio to AAC (Windows-compatible)
-                '-b:a', '192k',  # Set audio bitrate to 192kbps for good quality
-                '-c:v', 'copy'  # Keep video unchanged (no re-encoding)
-            ],
-            'fragment_retries': 10,  # Retry failed downloads up to 10 times
-            'nocheckcertificate': True,  # Prevent SSL issues
-            'concurrent_fragments': 5,  # 🏎️ Download 5 fragments at once (adjustable)
-            'progress_hooks': [progress_hook],  # 🏎️ Show progress
-        }
+        # Check if Audio-Only mode is enabled
+        if audio_only.get():
+            audio_format = selected_audio_format.get().lower()  # Convert MP3 -> mp3
+            output_file = os.path.join(temp_dir, f"{media_title}.{audio_format}")
+
+            ydl_opts = {
+                'format': 'bestaudio/best',  # Download best audio only
+                'outtmpl': output_file,  # Save as the selected format
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': audio_format,
+                    'preferredquality': '192',
+                }]
+            }
+
+        else:
+            # Normal video download
+            resolution_map = {
+                "1080p": "bestvideo[height=1080]+bestaudio/best",
+                "720p": "bestvideo[height=720]+bestaudio/best",
+                "480p": "bestvideo[height=480]+bestaudio/best",
+                "360p": "bestvideo[height=360]+bestaudio/best",
+                "Highest Available": "bestvideo+bestaudio/best"
+            }
+
+            selected_format = resolution_map.get(resolution, "bestvideo[height=1080]+bestaudio/best")
+            if audio_only.get():
+                output_file = os.path.join(temp_dir, f"{media_title}.{audio_format}")
+            else:
+                output_file = os.path.join(temp_dir, f"{media_title}.mp4")  # Ensure MP4 is set correctly
+
+            ydl_opts = {
+                'format': selected_format,
+                'merge_output_format': 'mp4',
+                'outtmpl': output_file,
+                'postprocessor_args': ['-c:a', 'aac', '-b:a', '192k', '-c:v', 'copy'],
+                'fragment_retries': 10,
+                'nocheckcertificate': True,
+                'concurrent_fragments': 5,
+            }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
-        # Move the file to the output directory
-        final_path = os.path.join(output_dir, f"{video_title}.mp4")
-        os.rename(video_file, final_path)
+        # Fix: Handle duplicate extensions caused by FFmpeg
+        expected_file = f"{output_file}.{audio_format}"  # Expected (e.g., song.mp3)
+        converted_file = f"{output_file}.m4a"  # FFmpeg might save it as .m4a
+
+        # Ensure the final correct file is identified
+        # If FFmpeg adds an extra extension, detect and fix it
+        if os.path.exists(converted_file) and audio_format == "aac":
+            final_audio_file = converted_file  # Use FFmpeg's .m4a file
+            fixed_name = final_audio_file.replace(".m4a", ".aac")  # Rename to .aac
+            os.rename(final_audio_file, fixed_name)
+            final_audio_file = fixed_name  # Update reference
+        elif os.path.exists(expected_file):
+            final_audio_file = expected_file  # Use expected format
+        else:
+            final_audio_file = output_file  # Fallback
+
+        # Fix: Remove unnecessary duplicated extensions (e.g., .mp3.mp3 -> .mp3)
+        if final_audio_file.endswith(f".{audio_format}.{audio_format}"):
+            fixed_name = final_audio_file.rsplit(f".{audio_format}", 1)[0]  # Remove extra extension
+            os.rename(final_audio_file, fixed_name)
+            final_audio_file = fixed_name
+
+        # Move the correct file to the output directory
+        final_path = os.path.join(output_dir, os.path.basename(final_audio_file))
+        os.rename(final_audio_file, final_path)
 
         print(f"✅ Download complete: {final_path}")
         return True
 
     except Exception as e:
-        print(f"❌ Error downloading video: {e}")
+        print(f"❌ Error downloading media: {e}")
         return False
+
+# def download_video(url, output_dir, resolution):
+#     """ Downloads a YouTube video in the selected resolution. """
+#     print(f"🎥 Fetching video at {resolution} resolution...")
+    
+#     # Map resolution to yt-dlp format selectors
+#     resolution_map = {
+#         "1080p": "bestvideo[height=1080]+bestaudio/best",
+#         "720p": "bestvideo[height=720]+bestaudio/best",
+#         "480p": "bestvideo[height=480]+bestaudio/best",
+#         "360p": "bestvideo[height=360]+bestaudio/best",
+#         "Highest Available": "bestvideo+bestaudio/best"
+#     }
+    
+#     selected_format = resolution_map.get(resolution, "bestvideo[height=1080]+bestaudio/best")
+
+
+#     """
+#     Saves the file in the specified output directory.
+#     """
+#     print("🎥 Fetching video and audio...")
+
+#     # Use a temporary directory for the download process
+#     temp_dir = tempfile.mkdtemp()
+
+#     try:
+#         with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+#             info_dict = ydl.extract_info(url, download=False)  # Get metadata without downloading
+#             video_title = sanitize_filename(info_dict.get('title', 'output'))  # Sanitize here
+#             video_file = os.path.join(temp_dir, f"{video_title}.mp4")
+
+#         # yt-dlp options
+#         ydl_opts = {
+#             'format': selected_format,
+#             'merge_output_format': 'mp4',  # Ensure output is always .mp4
+#             'outtmpl': video_file,  # Save using the sanitized filename
+#             'postprocessor_args': [
+#                 '-c:a', 'aac',  # Convert audio to AAC (Windows-compatible)
+#                 '-b:a', '192k',  # Set audio bitrate to 192kbps for good quality
+#                 '-c:v', 'copy'  # Keep video unchanged (no re-encoding)
+#             ],
+#             'fragment_retries': 10,  # Retry failed downloads up to 10 times
+#             'nocheckcertificate': True,  # Prevent SSL issues
+#             'concurrent_fragments': 5,  # 🏎️ Download 5 fragments at once (adjustable)
+#             'progress_hooks': [progress_hook],  # 🏎️ Show progress
+#         }
+
+#         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+#             ydl.download([url])
+
+#         # Move the file to the output directory
+#         final_path = os.path.join(output_dir, f"{video_title}.mp4")
+#         os.rename(video_file, final_path)
+
+#         print(f"✅ Download complete: {final_path}")
+#         return True
+
+#     except Exception as e:
+#         print(f"❌ Error downloading video: {e}")
+#         return False
 
 def sanitize_filename(filename):
     """ Removes or replaces invalid characters in filenames """
@@ -174,12 +275,27 @@ def sanitize_filename(filename):
 # 🖥️ GUI Setup
 root = tk.Tk()
 root.title("YouTube Video Downloader")
-root.geometry("600x420")
+root.geometry("600x600")
+
+# Variable to store whether "Audio Only" is enabled
+audio_only = tk.BooleanVar(value=False)
+selected_audio_format = tk.StringVar(value="MP3")  # Default format
 
 # Input field for URL
 tk.Label(root, text="Enter YouTube URL:", font=("Arial", 12)).pack(pady=5)
 url_entry = tk.Entry(root, width=50)
 url_entry.pack(pady=5)
+
+# Add "Audio Only" checkbox
+audio_checkbox = tk.Checkbutton(root, text="Audio Only", variable=audio_only, command=toggle_audio_mode)
+audio_checkbox.pack(pady=5)
+
+# Dropdown menu for selecting audio format
+tk.Label(root, text="Select Audio Format:", font=("Arial", 10)).pack(pady=5)
+audio_formats = ["MP3", "WAV", "AAC", "FLAC"]
+audio_format_dropdown = tk.OptionMenu(root, selected_audio_format, *audio_formats)
+audio_format_dropdown.pack(pady=5)
+audio_format_dropdown.config(state=tk.DISABLED)  # Initially disabled
 
 # Dropdown menu for resolution selection
 tk.Label(root, text="Select Resolution:", font=("Arial", 10)).pack(pady=5)
