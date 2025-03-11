@@ -170,6 +170,7 @@ def download_video(url, output_dir, resolution):
                 'fragment_retries': 10,
                 'nocheckcertificate': True,
                 'concurrent_fragments': 5,
+                #'progress_hooks': [progress_hook],  # 🏎️ Show progress
             }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -207,66 +208,6 @@ def download_video(url, output_dir, resolution):
     except Exception as e:
         print(f"❌ Error downloading media: {e}")
         return False
-
-# def download_video(url, output_dir, resolution):
-#     """ Downloads a YouTube video in the selected resolution. """
-#     print(f"🎥 Fetching video at {resolution} resolution...")
-    
-#     # Map resolution to yt-dlp format selectors
-#     resolution_map = {
-#         "1080p": "bestvideo[height=1080]+bestaudio/best",
-#         "720p": "bestvideo[height=720]+bestaudio/best",
-#         "480p": "bestvideo[height=480]+bestaudio/best",
-#         "360p": "bestvideo[height=360]+bestaudio/best",
-#         "Highest Available": "bestvideo+bestaudio/best"
-#     }
-    
-#     selected_format = resolution_map.get(resolution, "bestvideo[height=1080]+bestaudio/best")
-
-
-#     """
-#     Saves the file in the specified output directory.
-#     """
-#     print("🎥 Fetching video and audio...")
-
-#     # Use a temporary directory for the download process
-#     temp_dir = tempfile.mkdtemp()
-
-#     try:
-#         with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
-#             info_dict = ydl.extract_info(url, download=False)  # Get metadata without downloading
-#             video_title = sanitize_filename(info_dict.get('title', 'output'))  # Sanitize here
-#             video_file = os.path.join(temp_dir, f"{video_title}.mp4")
-
-#         # yt-dlp options
-#         ydl_opts = {
-#             'format': selected_format,
-#             'merge_output_format': 'mp4',  # Ensure output is always .mp4
-#             'outtmpl': video_file,  # Save using the sanitized filename
-#             'postprocessor_args': [
-#                 '-c:a', 'aac',  # Convert audio to AAC (Windows-compatible)
-#                 '-b:a', '192k',  # Set audio bitrate to 192kbps for good quality
-#                 '-c:v', 'copy'  # Keep video unchanged (no re-encoding)
-#             ],
-#             'fragment_retries': 10,  # Retry failed downloads up to 10 times
-#             'nocheckcertificate': True,  # Prevent SSL issues
-#             'concurrent_fragments': 5,  # 🏎️ Download 5 fragments at once (adjustable)
-#             'progress_hooks': [progress_hook],  # 🏎️ Show progress
-#         }
-
-#         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-#             ydl.download([url])
-
-#         # Move the file to the output directory
-#         final_path = os.path.join(output_dir, f"{video_title}.mp4")
-#         os.rename(video_file, final_path)
-
-#         print(f"✅ Download complete: {final_path}")
-#         return True
-
-#     except Exception as e:
-#         print(f"❌ Error downloading video: {e}")
-#         return False
 
 def sanitize_filename(filename):
     """ Removes or replaces invalid characters in filenames """
