@@ -16,6 +16,8 @@ import shutil
 # - Add button to Paste link from clipboard (clear + insert from clipboard)
 # - Can't finalize download (move file to the download folder) if such file already exists
 # - Add an option to either keep upload date or use current download date
+# - Change application Icon
+# - Improve UI instead of everything being from top to bottom, make similar groups like for URL
 # - (Skip) Stop merging
 
 ### Command to create .exe out of .py
