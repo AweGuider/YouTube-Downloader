@@ -1,4 +1,9 @@
 import os
+import time
+# import win32con
+# import win32file
+import platform
+import ctypes
 import sys
 import yt_dlp
 import tempfile
@@ -18,6 +23,8 @@ import shutil  # Add this to the top of the script
 # - Add button to Paste link from clipboard (clear + insert from clipboard)
 # - Right now I get 2 different small windows pop-up after download finished (need to get rid of them)
 # - Resolution doesn't get set when selecting from dropdown menu, so it is always 1080p
+# - Can't finalize download (move file to the download folder) if such file already exists
+# - Add an option to either keep upload date or use current download date 
 
 ### Command to create .exe out of .py
 # python -m PyInstaller --onefile downloader.py
@@ -228,6 +235,7 @@ def download_video(url, output_dir, resolution):
         with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
             info_dict = ydl.extract_info(url, download=False)
             media_title = sanitize_filename(info_dict.get('title', 'output'))  # Sanitize filename
+            upload_date = info_dict.get('upload_date', None)  # ✅ Extract Upload Date (YYYYMMDD)
 
         # Check if Audio-Only mode is enabled
         if audio_only.get():
@@ -313,7 +321,7 @@ def download_video(url, output_dir, resolution):
             print("🗑️ Cleaning up temporary files...")
             shutil.rmtree(temp_dir, ignore_errors=True)
 
-        finalize_download(final_path)
+        finalize_download(final_path, upload_date)
 
         return True
 
@@ -321,9 +329,38 @@ def download_video(url, output_dir, resolution):
         print(f"❌ Error downloading media: {e}")
         return False
     
-def finalize_download(final_path):
+def preserve_date_created(filepath, created_time):
+    """ Restores the original 'Date Created' timestamp on Windows. """
+    if platform.system() == "Windows":
+        try:
+            # Windows API call to set file creation time
+            ctime = ctypes.windll.kernel32.SetFileTime
+            handle = ctypes.windll.kernel32.CreateFileW(
+                filepath, 256, 0, None, 3, 128, None
+            )
+            if handle != -1:
+                ctime(handle, ctypes.byref(ctypes.c_ulonglong(int(created_time * 10000000 + 116444736000000000))))
+                ctypes.windll.kernel32.CloseHandle(handle)
+                print(f"✅ Restored 'Date Created' on Windows: {time.ctime(created_time)}")
+        except Exception as e:
+            print(f"⚠️ Could not restore 'Date Created': {e}")
+    
+def finalize_download(final_path, upload_date):
     """ Final actions after download: show success & open folder. """
     messagebox.showinfo("Download Complete", f"File saved to:\n{final_path}")
+
+    # ✅ Get the current timestamp to preserve "Date Created"
+    current_time = time.time()
+
+    if upload_date:
+        try:
+            # ✅ Apply upload date to "Last Modified" and "Last Accessed"
+            os.utime(final_path, (current_time, current_time))
+
+            print(f"✅ File timestamps updated: Modified/Accessed -> {upload_date}")
+
+        except Exception as e:
+            print(f"❌ Error updating timestamps: {e}")
 
     # **Automatically open folder after successful download**
     open_download_folder()
