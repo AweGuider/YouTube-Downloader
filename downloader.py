@@ -32,7 +32,15 @@ import shutil  # Add this to the top of the script
 default_url = "https://www.youtube.com/watch?v=ps74zeevi-g"
 
 # Default output directory (current folder)
-output_directory = os.getcwd()
+# output_directory = os.getcwd()
+# Set default output folder to "Downloads/YouTubeDownloads/"
+default_output_folder = os.path.join(os.path.expanduser("~"), "Downloads", "YouTubeDownloads")
+# Ensure the folder exists
+os.makedirs(default_output_folder, exist_ok=True)
+# Use this as the initial output directory
+output_directory = default_output_folder
+
+
 selected_resolution = "1080p"  # Default resolution
 
 # For future implementation of stable progress UI update
@@ -129,6 +137,13 @@ def download_video(url, output_dir, resolution):
 
     # Use a temporary directory for processing
     temp_dir = tempfile.mkdtemp()
+
+    # If the user has not changed the output folder, use the default folder
+    if output_dir == os.getcwd():
+        output_dir = default_output_folder
+        
+    # Ensure the output folder exists
+    os.makedirs(output_dir, exist_ok=True)
 
     try:
         with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
