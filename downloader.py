@@ -10,16 +10,12 @@ import shutil  # Add this to the top of the script
 
 ### TODO:
 # - Show progress of merging (no user feedback at the moment)
-# - Stop download
-# - Stop merging
-# - Make Downloads as default output folder
-# - After Success/Unsuccess get rid of the temp folder (?)
+# - (Skip) Stop merging
+# - After Unsuccess get rid of the temp folder (currently only cleans up after success)
 # - Set download's time instead of when video was uploaded
 # - First search for video. If it finds it, show available resolutions instead of manually checking
 # - Improve merging, for some reason it takes very long now
-# - Add a button to clear URL line instead of having to manually select all and erase
 # - At the end of download it shows a new window saying its been downloaded and user needs to press on it, potentially move it inside the YouTUbe Video Donwloader?
-# - Have a test video URL already placed in the line so I dont need to paste it myself everytime
 
 ### Command to create .exe out of .py
 # python -m PyInstaller --onefile downloader.py
@@ -185,7 +181,10 @@ def download_video(url, output_dir, resolution):
                 'format': selected_format,
                 'merge_output_format': 'mp4',
                 'outtmpl': output_file,
-                'postprocessor_args': ['-c:a', 'aac', '-b:a', '192k', '-c:v', 'copy'],
+                # 'postprocessor_args': ['-c:a', 'aac', '-b:a', '192k', '-c:v', 'copy'],
+                # 'postprocessor_args': [
+                #     "-c:v copy -c:a copy"  # ⚡ Merge without re-encoding
+                # ],
                 'fragment_retries': 10,
                 'nocheckcertificate': True,
                 'concurrent_fragments': 5,
@@ -244,6 +243,7 @@ def clear_url():
 
 # Function to clear the URL entry box
 def fill_in_default_url():
+    clear_url()
     url_entry.insert(0, default_url)  # Pre-fills the entry box
 
 # 🖥️ GUI Setup
@@ -269,11 +269,11 @@ url_entry = tk.Entry(url_frame, width=50)
 url_entry.pack(side=tk.RIGHT, padx=5)
 
 # Button to clear the URL field
-clear_button = tk.Button(url_frame, text="Clear", command=lambda: url_entry.delete(0, tk.END))
+clear_button = tk.Button(url_frame, text="Clear", command=clear_url)
 clear_button.pack(side=tk.LEFT, padx=2)
 
 # Button to clear the URL field
-default_url_button = tk.Button(url_frame, text="Default", command=lambda: url_entry.insert(0, default_url))
+default_url_button = tk.Button(url_frame, text="Default", command=fill_in_default_url)
 default_url_button.pack(side=tk.LEFT, padx=2)
 
 # Add "Audio Only" checkbox
