@@ -17,6 +17,7 @@ import shutil  # Add this to the top of the script
 # - At the end of download it shows a new window saying its been downloaded and user needs to press on it, potentially move it inside the YouTUbe Video Donwloader?
 # - Add button to Paste link from clipboard (clear + insert from clipboard)
 # - Right now I get 2 different small windows pop-up after download finished (need to get rid of them)
+# - Resolution doesn't get set when selecting from dropdown menu, so it is always 1080p
 
 ### Command to create .exe out of .py
 # python -m PyInstaller --onefile downloader.py
@@ -71,6 +72,7 @@ def set_resolution(value):
     """ Updates the selected resolution. """
     global selected_resolution
     selected_resolution = value
+    print(f"New Resolution: {selected_resolution}, Value: {value}")
 
 def toggle_audio_mode():
     """ Enables or disables audio-only mode and format selection. """
@@ -102,6 +104,9 @@ def progress_hook(d):
     elif d['status'] == 'finished':
         root.after(1000, lambda: status_label.config(text="✅ Download Complete!"))
 
+    else:
+        root.after(1000, lambda: status_label.config(text="🔄 Merging..."))
+
 def download_video_gui():
     """
     Function triggered when the Download button is clicked.
@@ -114,7 +119,7 @@ def download_video_gui():
 
     # Disable the button to prevent multiple clicks
     download_button.config(state=tk.DISABLED)
-    status_label.config(text="⏳ Downloading...")
+    status_label.config(text="⏳ Connecting...")
 
     # Run the download in a separate thread
     download_thread = threading.Thread(target=download_video_thread, args=(url,))
@@ -143,24 +148,6 @@ def update_resolution_options(*args):
     # **Fetch resolutions in background**
     root.after(300, lambda: fetch_and_update_resolutions(url))
 
-    # Fetch available resolutions
-    # resolutions = fetch_available_resolutions(url)
-
-    # # **Fix: Properly update the OptionMenu dropdown**
-    # resolution_menu.set(resolutions[0])  # Set the first available resolution as default
-
-
-    # # Update the dropdown menu
-    # resolution_dropdown['menu'].delete(0, 'end')  # Clear existing menu options
-    # for res in resolutions:
-    #     resolution_dropdown['menu'].add_command(label=res, command=lambda v=res: resolution_menu.set(v))
-
-    # # Set the first available resolution as default
-    # set_resolution(resolutions[0])
-
-    # # **Fix: Allow selecting the resolution**
-    # fetch_resolution_button.config(text="Resolutions Loaded ✅")  # Update button text
-
 def fetch_and_update_resolutions(url):
     """ Fetch available resolutions and update the dropdown. """
     resolutions = fetch_available_resolutions(url)
@@ -168,7 +155,7 @@ def fetch_and_update_resolutions(url):
     # **Clear old options & add new ones**
     resolution_dropdown['menu'].delete(0, 'end')
     for res in resolutions:
-        resolution_dropdown['menu'].add_command(label=res, command=lambda v=res: resolution_menu.set(v))
+        resolution_dropdown['menu'].add_command(label=res, command=lambda v=res: set_resolution(v))
 
     # **Set the first available resolution as default**
     resolution_menu.set(resolutions[0])
@@ -211,10 +198,10 @@ def download_video_thread(url):
 def update_ui_after_download(success):
     """ Updates the UI after the download is completed. """
     if success:
-        messagebox.showinfo("Success", f"Download completed successfully!\nSaved to: {output_directory}")
+        # messagebox.showinfo("Success", f"Download completed successfully!\nSaved to: {output_directory}")
         status_label.config(text="✅ Download Complete!")
     else:
-        messagebox.showerror("Error", "Failed to download video. Check console for details.")
+        # messagebox.showerror("Error", "Failed to download video. Check console for details.")
         status_label.config(text="❌ Download Failed")
 
     # Re-enable the download button
@@ -268,6 +255,9 @@ def download_video(url, output_dir, resolution):
             }
 
             selected_format = resolution_map.get(resolution, "bestvideo[height=1080]+bestaudio/best")
+
+            print(f"Resolution Selected: {resolution}, Format Selected: {selected_format}")
+
             if audio_only.get():
                 output_file = os.path.join(temp_dir, f"{media_title}.{audio_format}")
             else:
@@ -284,7 +274,7 @@ def download_video(url, output_dir, resolution):
                 'fragment_retries': 10,
                 'nocheckcertificate': True,
                 'concurrent_fragments': 5,
-                #'progress_hooks': [progress_hook],  # 🏎️ Show progress
+                'progress_hooks': [progress_hook],  # 🏎️ Show progress
             }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
