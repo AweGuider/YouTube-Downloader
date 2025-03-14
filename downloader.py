@@ -14,17 +14,11 @@ import threading
 import shutil  # Add this to the top of the script
 
 ### TODO:
-# - Show progress of merging (no user feedback at the moment)
-# - (Skip) Stop merging
 # - After Unsuccess get rid of the temp folder (currently only cleans up after success)
-# - Set download's time instead of when video was uploaded
-# - First search for video. If it finds it, show available resolutions instead of manually checking
-# - At the end of download it shows a new window saying its been downloaded and user needs to press on it, potentially move it inside the YouTUbe Video Donwloader?
 # - Add button to Paste link from clipboard (clear + insert from clipboard)
-# - Right now I get 2 different small windows pop-up after download finished (need to get rid of them)
-# - Resolution doesn't get set when selecting from dropdown menu, so it is always 1080p
 # - Can't finalize download (move file to the download folder) if such file already exists
-# - Add an option to either keep upload date or use current download date 
+# - Add an option to either keep upload date or use current download date
+# - (Skip) Stop merging
 
 ### Command to create .exe out of .py
 # python -m PyInstaller --onefile downloader.py
