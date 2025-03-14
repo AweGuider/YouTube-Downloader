@@ -1,7 +1,5 @@
 import os
 import time
-# import win32con
-# import win32file
 import platform
 import ctypes
 import sys
@@ -11,7 +9,7 @@ import re
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import threading
-import shutil  # Add this to the top of the script
+import shutil
 
 ### TODO:
 # - After Unsuccess get rid of the temp folder (currently only cleans up after success)
@@ -31,7 +29,6 @@ import shutil  # Add this to the top of the script
 default_url = "https://www.youtube.com/watch?v=ps74zeevi-g"
 
 # Default output directory (current folder)
-# output_directory = os.getcwd()
 # Set default output folder to "Downloads/YouTubeDownloads/"
 default_output_folder = os.path.join(os.path.expanduser("~"), "Downloads", "YouTubeDownloads")
 # Ensure the folder exists
@@ -135,7 +132,6 @@ def update_resolution_options(*args):
 
     if not url:
         # messagebox.showerror("Error", "Please enter a YouTube URL first.")
-        # return
         return  # Don't fetch if URL is empty
     
         # **Cancel any previous scheduled fetch call**
@@ -178,7 +174,6 @@ def fetch_available_resolutions(url):
                 if 'height' in video_format and video_format['height']:
                     available_resolutions.add(f"{video_format['height']}p")
 
-            # return sorted(available_resolutions, reverse=True)
             # Convert resolutions to integers for proper sorting
             return sorted(available_resolutions, key=lambda x: int(x.replace("p", "")), reverse=True)
 
@@ -199,10 +194,8 @@ def download_video_thread(url):
 def update_ui_after_download(success):
     """ Updates the UI after the download is completed. """
     if success:
-        # messagebox.showinfo("Success", f"Download completed successfully!\nSaved to: {output_directory}")
         status_label.config(text="✅ Download Complete!")
     else:
-        # messagebox.showerror("Error", "Failed to download video. Check console for details.")
         status_label.config(text="❌ Download Failed")
 
     # Re-enable the download button
@@ -269,10 +262,6 @@ def download_video(url, output_dir, resolution):
                 'format': selected_format,
                 'merge_output_format': 'mp4',
                 'outtmpl': output_file,
-                # 'postprocessor_args': ['-c:a', 'aac', '-b:a', '192k', '-c:v', 'copy'],
-                # 'postprocessor_args': [
-                #     "-c:v copy -c:a copy"  # ⚡ Merge without re-encoding
-                # ],
                 'fragment_retries': 10,
                 'nocheckcertificate': True,
                 'concurrent_fragments': 5,
