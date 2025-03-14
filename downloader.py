@@ -28,6 +28,9 @@ import shutil  # Add this to the top of the script
 # 1080p - https://www.youtube.com/watch?v=ps74zeevi-g
 # 720p - https://www.youtube.com/watch?v=cUM8OCBy6Ls
 
+# Auto-fill test URL (Replace with any default video link)
+default_url = "https://www.youtube.com/watch?v=ps74zeevi-g"
+
 # Default output directory (current folder)
 output_directory = os.getcwd()
 selected_resolution = "1080p"  # Default resolution
@@ -209,7 +212,7 @@ def download_video(url, output_dir, resolution):
         if delete_temp_files.get():
             print("🗑️ Cleaning up temporary files...")
             shutil.rmtree(temp_dir, ignore_errors=True)
-            
+
         return True
 
     except Exception as e:
@@ -219,6 +222,14 @@ def download_video(url, output_dir, resolution):
 def sanitize_filename(filename):
     """ Removes or replaces invalid characters in filenames """
     return re.sub(r'[<>:"/\\|?*]', '_', filename)  # Replaces invalid characters with "_"
+
+# Function to clear the URL entry box
+def clear_url():
+    url_entry.delete(0, tk.END)
+
+# Function to clear the URL entry box
+def fill_in_default_url():
+    url_entry.insert(0, default_url)  # Pre-fills the entry box
 
 # 🖥️ GUI Setup
 root = tk.Tk()
@@ -232,10 +243,23 @@ delete_temp_files = tk.BooleanVar(value=True)  # Default: Enabled
 audio_only = tk.BooleanVar(value=False)
 selected_audio_format = tk.StringVar(value="MP3")  # Default format
 
-# Input field for URL
 tk.Label(root, text="Enter YouTube URL:", font=("Arial", 12)).pack(pady=5)
-url_entry = tk.Entry(root, width=50)
-url_entry.pack(pady=5)
+
+# Create a frame to hold the URL entry and buttons
+url_frame = tk.Frame(root)
+url_frame.pack(pady=5)
+
+# Input field for URL (Pre-filled with default URL)
+url_entry = tk.Entry(url_frame, width=50)
+url_entry.pack(side=tk.RIGHT, padx=5)
+
+# Button to clear the URL field
+clear_button = tk.Button(url_frame, text="Clear", command=lambda: url_entry.delete(0, tk.END))
+clear_button.pack(side=tk.LEFT, padx=2)
+
+# Button to clear the URL field
+default_url_button = tk.Button(url_frame, text="Default", command=lambda: url_entry.insert(0, default_url))
+default_url_button.pack(side=tk.LEFT, padx=2)
 
 # Add "Audio Only" checkbox
 audio_checkbox = tk.Checkbutton(root, text="Audio Only", variable=audio_only, command=toggle_audio_mode)
