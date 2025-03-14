@@ -16,6 +16,7 @@ import shutil  # Add this to the top of the script
 # - First search for video. If it finds it, show available resolutions instead of manually checking
 # - At the end of download it shows a new window saying its been downloaded and user needs to press on it, potentially move it inside the YouTUbe Video Donwloader?
 # - Add button to Paste link from clipboard (clear + insert from clipboard)
+# - Right now I get 2 different small windows pop-up after download finished (need to get rid of them)
 
 ### Command to create .exe out of .py
 # python -m PyInstaller --onefile downloader.py
@@ -42,6 +43,21 @@ fetch_delay = None  # Global variable to track scheduled fetch calls
 
 # For future implementation of stable progress UI update
 latest_progress = {"percent": "0%", "speed": "N/A", "eta": "Unknown"}
+
+def open_download_folder():
+    """ Opens the download folder in File Explorer. """
+    folder_path = output_directory  # Use the configured output directory
+
+    try:
+        if sys.platform == "win32":
+            os.startfile(folder_path)  # ✅ Windows
+        elif sys.platform == "darwin":  # macOS
+            subprocess.call(["open", folder_path])
+        else:  # Linux
+            subprocess.call(["xdg-open", folder_path])
+    except Exception as e:
+        print(f"❌ Error opening folder: {e}")
+        messagebox.showerror("Error", "Could not open the download folder.")
 
 def select_output_folder():
     """ Opens a dialog for the user to select an output folder. """
@@ -307,11 +323,20 @@ def download_video(url, output_dir, resolution):
             print("🗑️ Cleaning up temporary files...")
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+        finalize_download(final_path)
+
         return True
 
     except Exception as e:
         print(f"❌ Error downloading media: {e}")
         return False
+    
+def finalize_download(final_path):
+    """ Final actions after download: show success & open folder. """
+    messagebox.showinfo("Download Complete", f"File saved to:\n{final_path}")
+
+    # **Automatically open folder after successful download**
+    open_download_folder()
 
 def sanitize_filename(filename):
     """ Removes or replaces invalid characters in filenames """
@@ -390,6 +415,9 @@ folder_button.pack(pady=5)
 # Label to show selected folder
 folder_label = tk.Label(root, text=f"📁 Save to: {output_directory}", font=("Arial", 10))
 folder_label.pack()
+
+open_folder_button = tk.Button(root, text="Open Download Folder", command=open_download_folder)
+open_folder_button.pack(pady=5)
 
 # Add a checkbox for cleaning up temp files
 cleanup_checkbox = tk.Checkbutton(root, text="Delete Temp Files After Download", variable=delete_temp_files)
