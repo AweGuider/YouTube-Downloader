@@ -6,6 +6,7 @@ import re
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import threading
+import shutil  # Add this to the top of the script
 
 ### TODO:
 # - Show progress of merging (no user feedback at the moment)
@@ -203,6 +204,12 @@ def download_video(url, output_dir, resolution):
         os.rename(final_audio_file, final_path)
 
         print(f"✅ Download complete: {final_path}")
+
+        # **Delete temporary files if the checkbox is enabled**
+        if delete_temp_files.get():
+            print("🗑️ Cleaning up temporary files...")
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            
         return True
 
     except Exception as e:
@@ -217,6 +224,9 @@ def sanitize_filename(filename):
 root = tk.Tk()
 root.title("YouTube Video Downloader")
 root.geometry("600x600")
+
+# Variable to store cleanup option
+delete_temp_files = tk.BooleanVar(value=True)  # Default: Enabled
 
 # Variable to store whether "Audio Only" is enabled
 audio_only = tk.BooleanVar(value=False)
@@ -253,6 +263,10 @@ folder_button.pack(pady=5)
 # Label to show selected folder
 folder_label = tk.Label(root, text=f"📁 Save to: {output_directory}", font=("Arial", 10))
 folder_label.pack()
+
+# Add a checkbox for cleaning up temp files
+cleanup_checkbox = tk.Checkbutton(root, text="Delete Temp Files After Download", variable=delete_temp_files)
+cleanup_checkbox.pack(pady=5)
 
 # Download button
 download_button = tk.Button(root, text="Download", command=download_video_gui)
