@@ -14,8 +14,8 @@ import shutil  # Add this to the top of the script
 # - After Unsuccess get rid of the temp folder (currently only cleans up after success)
 # - Set download's time instead of when video was uploaded
 # - First search for video. If it finds it, show available resolutions instead of manually checking
-# - Improve merging, for some reason it takes very long now
 # - At the end of download it shows a new window saying its been downloaded and user needs to press on it, potentially move it inside the YouTUbe Video Donwloader?
+# - Add button to Paste link from clipboard (clear + insert from clipboard)
 
 ### Command to create .exe out of .py
 # python -m PyInstaller --onefile downloader.py
@@ -36,8 +36,9 @@ os.makedirs(default_output_folder, exist_ok=True)
 # Use this as the initial output directory
 output_directory = default_output_folder
 
-
 selected_resolution = "1080p"  # Default resolution
+
+fetch_delay = None  # Global variable to track scheduled fetch calls
 
 # For future implementation of stable progress UI update
 latest_progress = {"percent": "0%", "speed": "N/A", "eta": "Unknown"}
@@ -102,6 +103,85 @@ def download_video_gui():
     # Run the download in a separate thread
     download_thread = threading.Thread(target=download_video_thread, args=(url,))
     download_thread.start()
+
+def update_resolution_options(*args):
+    """ Automatically fetch resolutions when URL is entered. """
+
+    """ Updates the resolution dropdown based on available formats. """
+    global fetch_delay
+    url = url_entry.get().strip()
+
+    if not url:
+        # messagebox.showerror("Error", "Please enter a YouTube URL first.")
+        # return
+        return  # Don't fetch if URL is empty
+    
+        # **Cancel any previous scheduled fetch call**
+    if fetch_delay:
+        root.after_cancel(fetch_delay)
+
+    # **Disable dropdown while fetching**
+    resolution_dropdown.config(state=tk.DISABLED)
+    resolution_menu.set("Fetching...")  # Show fetching status
+
+    # **Fetch resolutions in background**
+    root.after(300, lambda: fetch_and_update_resolutions(url))
+
+    # Fetch available resolutions
+    # resolutions = fetch_available_resolutions(url)
+
+    # # **Fix: Properly update the OptionMenu dropdown**
+    # resolution_menu.set(resolutions[0])  # Set the first available resolution as default
+
+
+    # # Update the dropdown menu
+    # resolution_dropdown['menu'].delete(0, 'end')  # Clear existing menu options
+    # for res in resolutions:
+    #     resolution_dropdown['menu'].add_command(label=res, command=lambda v=res: resolution_menu.set(v))
+
+    # # Set the first available resolution as default
+    # set_resolution(resolutions[0])
+
+    # # **Fix: Allow selecting the resolution**
+    # fetch_resolution_button.config(text="Resolutions Loaded ✅")  # Update button text
+
+def fetch_and_update_resolutions(url):
+    """ Fetch available resolutions and update the dropdown. """
+    resolutions = fetch_available_resolutions(url)
+
+    # **Clear old options & add new ones**
+    resolution_dropdown['menu'].delete(0, 'end')
+    for res in resolutions:
+        resolution_dropdown['menu'].add_command(label=res, command=lambda v=res: resolution_menu.set(v))
+
+    # **Set the first available resolution as default**
+    resolution_menu.set(resolutions[0])
+
+    # # Set the first available resolution as default
+    set_resolution(resolutions[0])
+
+    # **Re-enable the dropdown after fetching**
+    resolution_dropdown.config(state=tk.NORMAL)
+
+def fetch_available_resolutions(url):
+    """ Fetch available video resolutions for a given YouTube URL. """
+    try:
+        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+            info_dict = ydl.extract_info(url, download=False)
+            available_resolutions = set()
+
+            for video_format in info_dict['formats']:
+                if 'height' in video_format and video_format['height']:
+                    available_resolutions.add(f"{video_format['height']}p")
+
+            # return sorted(available_resolutions, reverse=True)
+            # Convert resolutions to integers for proper sorting
+            return sorted(available_resolutions, key=lambda x: int(x.replace("p", "")), reverse=True)
+
+
+    except Exception as e:
+        print(f"❌ Error fetching resolutions: {e}")
+        return ["Highest Available"]  # Default if fetching fails
 
 def download_video_thread(url):
     """ Runs the video download process in a separate thread. """
@@ -245,6 +325,7 @@ def clear_url():
 def fill_in_default_url():
     clear_url()
     url_entry.insert(0, default_url)  # Pre-fills the entry box
+    update_resolution_options()
 
 # 🖥️ GUI Setup
 root = tk.Tk()
@@ -264,13 +345,20 @@ tk.Label(root, text="Enter YouTube URL:", font=("Arial", 12)).pack(pady=5)
 url_frame = tk.Frame(root)
 url_frame.pack(pady=5)
 
+# Button to fetch available resolutions
+fetch_resolution_button = tk.Button(url_frame, text="🔍", command=update_resolution_options)
+fetch_resolution_button.pack(side=tk.RIGHT, padx=5)
+
 # Input field for URL (Pre-filled with default URL)
 url_entry = tk.Entry(url_frame, width=50)
 url_entry.pack(side=tk.RIGHT, padx=5)
+url_entry.bind("<KeyRelease>", update_resolution_options)  # **Trigger fetching on URL entry**
+# url_entry.bind("<Control-V>", update_resolution_options)  # ✅ Triggers on paste (Ctrl+V) TODO: STILL TO FIGURE OUT
+# url_entry.bind("<Button-3>", update_resolution_options)  # ✅ Triggers on right-click paste (Windows) TODO: STILL TO FIGURE OUT
 
 # Button to clear the URL field
-clear_button = tk.Button(url_frame, text="Clear", command=clear_url)
-clear_button.pack(side=tk.LEFT, padx=2)
+clear_button = tk.Button(url_frame, text="🗑️", command=clear_url)
+clear_button.pack(side=tk.LEFT, padx=0)
 
 # Button to clear the URL field
 default_url_button = tk.Button(url_frame, text="Default", command=fill_in_default_url)
