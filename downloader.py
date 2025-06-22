@@ -18,7 +18,10 @@ import shutil
 # - Add an option to either keep upload date or use current download date
 # - Change application Icon
 # - Improve UI instead of everything being from top to bottom, make similar groups like for URL
+# - Add a button to choose default Download Folder as the one in the Downloads/YouTubeDownloads
+# - Add support for Opus audio formats for older videos like "Hacking AV8R"
 # - (Skip) Stop merging
+# - Close CMD when app is closed
 
 ### Command to create .exe out of .py
 # python -m PyInstaller --onefile downloader.py

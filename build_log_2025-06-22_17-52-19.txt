@@ -1,0 +1,90 @@
+Removed existing EXE 
+312 INFO: PyInstaller: 6.12.0, contrib hooks: 2025.1
+312 INFO: Python: 3.8.10
+351 INFO: Platform: Windows-10-10.0.26100-SP0
+351 INFO: Python environment: C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.8_3.8.2800.0_x64__qbz5n2kfra8p0
+352 INFO: wrote C:\Projects\Programming\YT-Downloader\YouTubeDownloader.spec
+359 INFO: Module search paths (PYTHONPATH):
+['C:\\Projects\\Programming\\YT-Downloader',
+ 'C:\\Program '
+ 'Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.8_3.8.2800.0_x64__qbz5n2kfra8p0\\python38.zip',
+ 'C:\\Program '
+ 'Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.8_3.8.2800.0_x64__qbz5n2kfra8p0\\DLLs',
+ 'C:\\Program '
+ 'Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.8_3.8.2800.0_x64__qbz5n2kfra8p0\\lib',
+ 'C:\\Users\\alans\\AppData\\Local\\Microsoft\\WindowsApps\\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0',
+ 'C:\\Users\\alans\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python38\\site-packages',
+ 'C:\\Program '
+ 'Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.8_3.8.2800.0_x64__qbz5n2kfra8p0',
+ 'C:\\Program '
+ 'Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.8_3.8.2800.0_x64__qbz5n2kfra8p0\\lib\\site-packages',
+ 'C:\\Projects\\Programming\\YT-Downloader']
+1605 INFO: Appending 'datas' from .spec
+1605 INFO: checking Analysis
+1605 INFO: Building Analysis because Analysis-00.toc is non existent
+1605 INFO: Running Analysis Analysis-00.toc
+1605 INFO: Target bytecode optimization level: 0
+1605 INFO: Initializing module dependency graph...
+1608 INFO: Initializing module graph hook caches...
+1628 INFO: Analyzing modules for base_library.zip ...
+3330 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\Users\\alans\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python38\\site-packages\\PyInstaller\\hooks'
+3499 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\Users\\alans\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python38\\site-packages\\PyInstaller\\hooks'
+4867 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\Users\\alans\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python38\\site-packages\\PyInstaller\\hooks'
+5460 INFO: Caching module dependency graph...
+5497 INFO: Looking for Python shared library...
+5497 INFO: Using Python shared library: C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.8_3.8.2800.0_x64__qbz5n2kfra8p0\python38.dll
+5497 INFO: Analyzing C:\Projects\Programming\YT-Downloader\downloader.py
+5519 INFO: Processing standard module hook 'hook-platform.py' from 'C:\\Users\\alans\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python38\\site-packages\\PyInstaller\\hooks'
+5560 INFO: Processing standard module hook 'hook-yt_dlp.py' from 'C:\\Users\\alans\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python38\\site-packages\\yt_dlp\\__pyinstaller'
+316 WARNING: Failed to collect submodules for 'urllib3.contrib.emscripten' because importing 'urllib3.contrib.emscripten' raised: ImportError: cannot import name 'files' from 'importlib.resources' (C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.8_3.8.2800.0_x64__qbz5n2kfra8p0\lib\importlib\resources.py)
+8170 WARNING: collect_data_files - skipping data collection for module 'curl_cffi' as it is not a package.
+8216 INFO: Processing standard module hook 'hook-xml.py' from 'C:\\Users\\alans\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python38\\site-packages\\PyInstaller\\hooks'
+8230 INFO: Processing standard module hook 'hook-xml.etree.cElementTree.py' from 'C:\\Users\\alans\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python38\\site-packages\\PyInstaller\\hooks'
+8691 INFO: Processing standard module hook 'hook-certifi.py' from 'C:\\Users\\alans\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python38\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+9157 INFO: Processing standard module hook 'hook-sqlite3.py' from 'C:\\Users\\alans\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python38\\site-packages\\PyInstaller\\hooks'
+9993 INFO: Processing standard module hook 'hook-websockets.py' from 'C:\\Users\\alans\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python38\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+11086 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'C:\\Users\\alans\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python38\\site-packages\\PyInstaller\\hooks'
+11670 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'C:\\Users\\alans\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python38\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+11672 INFO: SetuptoolsInfo: initializing cached setuptools info...
+12989 INFO: Processing standard module hook 'hook-charset_normalizer.py' from 'C:\\Users\\alans\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python38\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+13553 INFO: Processing standard module hook 'hook-Cryptodome.py' from 'C:\\Users\\alans\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python38\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+21874 INFO: Processing pre-find-module-path hook 'hook-tkinter.py' from 'C:\\Users\\alans\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python38\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+21874 INFO: TclTkInfo: initializing cached Tcl/Tk info...
+22508 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Users\\alans\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python38\\site-packages\\PyInstaller\\hooks'
+22533 INFO: Processing module hooks (post-graph stage)...
+22663 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Users\\alans\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python38\\site-packages\\PyInstaller\\hooks'
+22681 INFO: Performing binary vs. data reclassification (962 entries)
+22952 INFO: Looking for ctypes DLLs
+23000 INFO: Analyzing run-time hooks ...
+23006 INFO: Including run-time hook 'pyi_rth__tkinter.py' from 'C:\\Users\\alans\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python38\\site-packages\\PyInstaller\\hooks\\rthooks'
+23007 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\Users\\alans\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python38\\site-packages\\PyInstaller\\hooks\\rthooks'
+23008 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'C:\\Users\\alans\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python38\\site-packages\\PyInstaller\\hooks\\rthooks'
+23011 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'C:\\Users\\alans\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python38\\site-packages\\PyInstaller\\hooks\\rthooks'
+23086 INFO: Creating base_library.zip...
+23163 INFO: Looking for dynamic libraries
+24123 INFO: Extra DLL search directories (AddDllDirectory): []
+24123 INFO: Extra DLL search directories (PATH): []
+25090 INFO: Warnings written to C:\Projects\Programming\YT-Downloader\build\YouTubeDownloader\warn-YouTubeDownloader.txt
+25258 INFO: Graph cross-reference written to C:\Projects\Programming\YT-Downloader\build\YouTubeDownloader\xref-YouTubeDownloader.html
+25333 INFO: checking PYZ
+25334 INFO: Building PYZ because PYZ-00.toc is non existent
+25334 INFO: Building PYZ (ZlibArchive) C:\Projects\Programming\YT-Downloader\build\YouTubeDownloader\PYZ-00.pyz
+26441 INFO: Building PYZ (ZlibArchive) C:\Projects\Programming\YT-Downloader\build\YouTubeDownloader\PYZ-00.pyz completed successfully.
+26496 INFO: checking PKG
+26496 INFO: Building PKG because PKG-00.toc is non existent
+26496 INFO: Building PKG (CArchive) YouTubeDownloader.pkg
+43807 INFO: Building PKG (CArchive) YouTubeDownloader.pkg completed successfully.
+43834 INFO: Bootloader C:\Users\alans\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\LocalCache\local-packages\Python38\site-packages\PyInstaller\bootloader\Windows-64bit-intel\runw.exe
+43834 INFO: checking EXE
+43834 INFO: Building EXE because EXE-00.toc is non existent
+43834 INFO: Building EXE from EXE-00.toc
+43835 INFO: Copying bootloader EXE to C:\Projects\Programming\YT-Downloader\dist\YouTubeDownloader.exe
+43870 INFO: Copying icon to EXE
+43875 INFO: Copying 0 resources to EXE
+43875 INFO: Embedding manifest in EXE
+43880 INFO: Appending PKG archive to EXE
+43955 INFO: Fixing EXE headers
+45346 INFO: Building EXE from EXE-00.toc completed successfully.
+45380 INFO: Build complete! The results are available in: C:\Projects\Programming\YT-Downloader\dist
+Adding imports: ['yt_dlp.compat._legacy', 'yt_dlp.compat._deprecated', 'yt_dlp.utils._legacy', 'yt_dlp.utils._deprecated', 'Cryptodome', 'websockets', 'websockets.__main__', 'websockets.asyncio', 'websockets.asyncio.async_timeout', 'websockets.asyncio.client', 'websockets.asyncio.compatibility', 'websockets.asyncio.connection', 'websockets.asyncio.messages', 'websockets.asyncio.server', 'websockets.auth', 'websockets.client', 'websockets.connection', 'websockets.datastructures', 'websockets.exceptions', 'websockets.extensions', 'websockets.extensions.base', 'websockets.extensions.permessage_deflate', 'websockets.frames', 'websockets.headers', 'websockets.http', 'websockets.http11', 'websockets.imports', 'websockets.legacy', 'websockets.legacy.auth', 'websockets.legacy.client', 'websockets.legacy.exceptions', 'websockets.legacy.framing', 'websockets.legacy.handshake', 'websockets.legacy.http', 'websockets.legacy.protocol', 'websockets.legacy.server', 'websockets.protocol', 'websockets.server', 'websockets.speedups', 'websockets.streams', 'websockets.sync', 'websockets.sync.client', 'websockets.sync.connection', 'websockets.sync.messages', 'websockets.sync.server', 'websockets.sync.utils', 'websockets.typing', 'websockets.uri', 'websockets.utils', 'websockets.version', 'requests', 'requests.__version__', 'requests._internal_utils', 'requests.adapters', 'requests.api', 'requests.auth', 'requests.certs', 'requests.compat', 'requests.cookies', 'requests.exceptions', 'requests.help', 'requests.hooks', 'requests.models', 'requests.packages', 'requests.sessions', 'requests.status_codes', 'requests.structures', 'requests.utils', 'urllib3', 'urllib3._base_connection', 'urllib3._collections', 'urllib3._request_methods', 'urllib3._version', 'urllib3.connection', 'urllib3.connectionpool', 'urllib3.contrib', 'urllib3.contrib.pyopenssl', 'urllib3.contrib.socks', 'urllib3.exceptions', 'urllib3.fields', 'urllib3.filepost', 'urllib3.http2', 'urllib3.http2.connection', 'urllib3.http2.probe', 'urllib3.poolmanager', 'urllib3.response', 'urllib3.util', 'urllib3.util.connection', 'urllib3.util.proxy', 'urllib3.util.request', 'urllib3.util.response', 'urllib3.util.retry', 'urllib3.util.ssl_', 'urllib3.util.ssl_match_hostname', 'urllib3.util.ssltransport', 'urllib3.util.timeout', 'urllib3.util.url', 'urllib3.util.util', 'urllib3.util.wait', 'mutagen', 'brotli', 'certifi', 'secretstorage', 'curl_cffi']
+Build complete: dist\YouTubeDownloader.exe 

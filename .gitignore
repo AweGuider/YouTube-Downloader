@@ -13,3 +13,7 @@ downloader.spec
 *.tmp
 .DS_Store
 Thumbs.db
+
+# Ignore project-specific files
+*.zip
+build_log*.txt
