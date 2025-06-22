@@ -9,7 +9,7 @@ if "%FILE_NAME%"=="" set FILE_NAME=YouTubeDownloader_by_AweDev
 
 :: === Prompt for ZIP Name ===
 set /p ZIP_NAME=Enter ZIP archive name (default: %FILE_NAME%-Build.zip): 
-if "%ZIP_NAME%"=="" set ZIP_NAME=%FILE_NAME%-Build_by_AweDev.zip
+if "%ZIP_NAME%"=="" set ZIP_NAME=%FILE_NAME%-Build.zip
 
 :: === Ask About Overwriting Existing Files ===
 set /p OVERWRITE=Overwrite existing files if they exist? (y/n): 
