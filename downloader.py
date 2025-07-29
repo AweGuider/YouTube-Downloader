@@ -10,16 +10,18 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 import threading
 import shutil
+import subprocess
 
 ### TODO:
+# - [IMPORTANT - CHECK] Audio download seems to be broken, it ends up having .mp3 and .mp3.mp3 in the Temp folder and get's stuck in 'Connecting'
 # - After Unsuccess get rid of the temp folder (currently only cleans up after success)
+# - Can't paste with a different keyboard layout like Russian for example
 # - Add button to Paste link from clipboard (clear + insert from clipboard)
-# - Can't finalize download (move file to the download folder) if such file already exists
+# - Can't finalize download (move file to the download folder) if such file already exists. Can't download twice in a row.
 # - Add an option to either keep upload date or use current download date
 # - Change application Icon
 # - Improve UI instead of everything being from top to bottom, make similar groups like for URL
 # - Add a button to choose default Download Folder as the one in the Downloads/YouTubeDownloads
-# - Add support for Opus audio formats for older videos like "Hacking AV8R"
 # - (Skip) Stop merging
 # - Close CMD when app is closed
 
@@ -208,10 +210,12 @@ def update_ui_after_download(success):
 
 def download_video(url, output_dir, resolution):
     """ Downloads a YouTube video or extracts audio based on user selection. """
-    print(f"🎥 Fetching media... Audio Only: {audio_only.get()}")
+
+    is_audio_only = audio_only.get()
+    print(f"🎥 Fetching media... Audio Only: {is_audio_only}")
 
     # Ensure audio_format is always defined, whether in audio-only or video download mode
-    audio_format = selected_audio_format.get().lower() if audio_only.get() else None
+    audio_format = selected_audio_format.get().lower() if is_audio_only else None
 
     # Use a temporary directory for processing
     temp_dir = tempfile.mkdtemp()
@@ -230,8 +234,7 @@ def download_video(url, output_dir, resolution):
             upload_date = info_dict.get('upload_date', None)  # ✅ Extract Upload Date (YYYYMMDD)
 
         # Check if Audio-Only mode is enabled
-        if audio_only.get():
-            audio_format = selected_audio_format.get().lower()  # Convert MP3 -> mp3
+        if is_audio_only:
             output_file = os.path.join(temp_dir, f"{media_title}.{audio_format}")
 
             ydl_opts = {
@@ -245,6 +248,10 @@ def download_video(url, output_dir, resolution):
             }
 
         else:
+            print("🛠️ VIDEO MODE DETECTED")
+            output_file = os.path.join(temp_dir, f"{media_title}.mp4")  # Ensure MP4 is set correctly
+            print(f"🧾 Output file will be: {output_file}")
+
             # Normal video download
             resolution_map = {
                 "1080p": "bestvideo[height=1080]+bestaudio/best",
@@ -255,52 +262,64 @@ def download_video(url, output_dir, resolution):
             }
 
             selected_format = resolution_map.get(resolution, "bestvideo[height=1080]+bestaudio/best")
-
             print(f"Resolution Selected: {resolution}, Format Selected: {selected_format}")
-
-            if audio_only.get():
-                output_file = os.path.join(temp_dir, f"{media_title}.{audio_format}")
-            else:
-                output_file = os.path.join(temp_dir, f"{media_title}.mp4")  # Ensure MP4 is set correctly
 
             ydl_opts = {
                 'format': selected_format,
                 'merge_output_format': 'mp4',
                 'outtmpl': output_file,
+                'postprocessor_args': [
+                    '-c:a', 'aac',  # Convert audio to AAC (Windows-compatible)
+                    '-b:a', '192k',  # Set audio bitrate to 192kbps for good quality
+                    '-c:v', 'copy'  # Keep video unchanged (no re-encoding)
+                ],
                 'fragment_retries': 10,
                 'nocheckcertificate': True,
                 'concurrent_fragments': 5,
                 'progress_hooks': [progress_hook],  # 🏎️ Show progress
             }
 
+        print("⏬ Starting yt-dlp download...")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
+        print("✅ yt-dlp download finished")
+        print(f"📂 Temp directory contents: {os.listdir(temp_dir)}")
 
-        # Fix: Handle duplicate extensions caused by FFmpeg
-        expected_file = f"{output_file}.{audio_format}"  # Expected (e.g., song.mp3)
-        converted_file = f"{output_file}.m4a"  # FFmpeg might save it as .m4a
+        if is_audio_only:
+            expected_file = f"{output_file}.{audio_format}"
+            converted_file = f"{output_file}.m4a"
 
-        # Ensure the final correct file is identified
-        # If FFmpeg adds an extra extension, detect and fix it
-        if os.path.exists(converted_file) and audio_format == "aac":
-            final_audio_file = converted_file  # Use FFmpeg's .m4a file
-            fixed_name = final_audio_file.replace(".m4a", ".aac")  # Rename to .aac
-            os.rename(final_audio_file, fixed_name)
-            final_audio_file = fixed_name  # Update reference
-        elif os.path.exists(expected_file):
-            final_audio_file = expected_file  # Use expected format
+            if os.path.exists(converted_file) and audio_format == "aac":
+                final_file = converted_file.replace(".m4a", ".aac")
+                os.rename(converted_file, final_file)
+            elif os.path.exists(expected_file):
+                final_file = expected_file
+            else:
+                final_file = output_file
+
+            # Fix double extensions
+            if final_file.endswith(f".{audio_format}.{audio_format}"):
+                fixed_name = final_file.rsplit(f".{audio_format}", 1)[0]
+                os.rename(final_file, fixed_name)
+                final_file = fixed_name
         else:
-            final_audio_file = output_file  # Fallback
+            final_file = output_file  # Video file path
 
-        # Fix: Remove unnecessary duplicated extensions (e.g., .mp3.mp3 -> .mp3)
-        if final_audio_file.endswith(f".{audio_format}.{audio_format}"):
-            fixed_name = final_audio_file.rsplit(f".{audio_format}", 1)[0]  # Remove extra extension
-            os.rename(final_audio_file, fixed_name)
-            final_audio_file = fixed_name
+        # Check file codecs after download
+        probe_cmd = [
+            "ffprobe", "-v", "error", "-show_entries",
+            "stream=codec_type,codec_name", "-of", "default=noprint_wrappers=1",
+            output_file
+        ]
+        print("🔍 Running ffprobe to inspect output file:")
+        try:
+            result = subprocess.run(probe_cmd, capture_output=True, text=True)
+            print(result.stdout)
+        except Exception as e:
+            print(f"⚠️ ffprobe failed: {e}")
 
-        # Move the correct file to the output directory
-        final_path = os.path.join(output_dir, os.path.basename(final_audio_file))
-        os.rename(final_audio_file, final_path)
+        final_path = os.path.join(output_dir, os.path.basename(final_file))
+        os.rename(final_file, final_path)
 
         print(f"✅ Download complete: {final_path}")
 
