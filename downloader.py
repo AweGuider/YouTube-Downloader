@@ -5,6 +5,7 @@ import ctypes
 import sys
 import yt_dlp
 import tempfile
+import functools
 import re
 import tkinter as tk
 from tkinter import filedialog, messagebox
@@ -50,6 +51,112 @@ fetch_delay = None  # Global variable to track scheduled fetch calls
 
 # For future implementation of stable progress UI update
 latest_progress = {"percent": "0%", "speed": "N/A", "eta": "Unknown"}
+
+def app_runtime_dir():
+    """Returns the PyInstaller extraction folder when frozen, otherwise the source folder."""
+    return getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+
+def binary_name(name):
+    if os.name == "nt" and not name.lower().endswith(".exe"):
+        return f"{name}.exe"
+    return name
+
+def bundled_binary_path(name):
+    executable = binary_name(name)
+    bundled_path = os.path.join(app_runtime_dir(), executable)
+    if os.path.exists(bundled_path):
+        return bundled_path
+    return None
+
+def resolve_windows_command(executable):
+    if os.name != "nt":
+        return None
+
+    try:
+        result = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                f"$cmd = Get-Command -Name '{executable}' -ErrorAction SilentlyContinue; if ($cmd) {{ $cmd.Source }}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except Exception:
+        return None
+
+    candidate = result.stdout.strip().splitlines()[0] if result.stdout.strip() else None
+    if candidate and os.path.exists(candidate):
+        return candidate
+    return None
+
+@functools.lru_cache(maxsize=None)
+def system_binary_path(name):
+    executable = binary_name(name)
+    return shutil.which(executable) or resolve_windows_command(executable)
+
+def runtime_binary_path(name):
+    return bundled_binary_path(name) or system_binary_path(name)
+
+def runtime_binary_dir(*required_names):
+    runtime_dir = app_runtime_dir()
+    if all(os.path.exists(os.path.join(runtime_dir, binary_name(name))) for name in required_names):
+        return runtime_dir
+
+    resolved = [runtime_binary_path(name) for name in required_names]
+    if all(resolved):
+        directories = {os.path.dirname(path) for path in resolved}
+        if len(directories) == 1:
+            return directories.pop()
+
+    return None
+
+def prepend_runtime_tools_to_path():
+    runtime_dir = app_runtime_dir()
+    current_path = os.environ.get("PATH", "")
+    if runtime_dir and runtime_dir not in current_path.split(os.pathsep):
+        os.environ["PATH"] = runtime_dir + os.pathsep + current_path
+
+def create_ytdlp_options(overrides=None):
+    options = {"quiet": True}
+
+    ffmpeg_dir = runtime_binary_dir("ffmpeg", "ffprobe")
+    if ffmpeg_dir:
+        options["ffmpeg_location"] = ffmpeg_dir
+
+    js_runtime_candidates = (
+        ("deno", "deno"),
+        ("node", "node"),
+        ("bun", "bun"),
+        ("quickjs", "qjs"),
+    )
+
+    for runtime_name, executable_name in js_runtime_candidates:
+        runtime_path = bundled_binary_path(executable_name)
+        if runtime_path:
+            options["js_runtimes"] = {runtime_name: {"path": runtime_path}}
+            if runtime_name in {"deno", "bun"}:
+                options["remote_components"] = ["ejs:npm"]
+            break
+
+    if "js_runtimes" not in options:
+        for runtime_name, executable_name in js_runtime_candidates:
+            runtime_path = system_binary_path(executable_name)
+            if runtime_path:
+                options["js_runtimes"] = {runtime_name: {"path": runtime_path}}
+                if runtime_name in {"deno", "bun"}:
+                    options["remote_components"] = ["ejs:npm"]
+                break
+
+    if overrides:
+        options.update(overrides)
+
+    return options
+
+prepend_runtime_tools_to_path()
 
 def open_download_folder():
     """ Opens the download folder in File Explorer. """
@@ -174,7 +281,7 @@ def fetch_and_update_resolutions(url):
 def fetch_available_resolutions(url):
     """ Fetch available video resolutions for a given YouTube URL. """
     try:
-        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+        with yt_dlp.YoutubeDL(create_ytdlp_options()) as ydl:
             info_dict = ydl.extract_info(url, download=False)
             available_resolutions = set()
 
@@ -229,7 +336,7 @@ def download_video(url, output_dir, resolution):
     os.makedirs(output_dir, exist_ok=True)
 
     try:
-        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+        with yt_dlp.YoutubeDL(create_ytdlp_options()) as ydl:
             info_dict = ydl.extract_info(url, download=False)
             media_title = sanitize_filename(info_dict.get('title', 'output'))  # Sanitize filename
             upload_date = info_dict.get('upload_date', None)  # ✅ Extract Upload Date (YYYYMMDD)
@@ -238,7 +345,7 @@ def download_video(url, output_dir, resolution):
         if is_audio_only:
             output_file = os.path.join(temp_dir, f"{media_title}.{audio_format}")
 
-            ydl_opts = {
+            ydl_opts = create_ytdlp_options({
                 'format': 'bestaudio/best',  # Download best audio only
                 'outtmpl': output_file,  # Save as the selected format
                 'postprocessors': [{
@@ -246,7 +353,7 @@ def download_video(url, output_dir, resolution):
                     'preferredcodec': audio_format,
                     'preferredquality': '192',
                 }]
-            }
+            })
 
         else:
             print("🛠️ VIDEO MODE DETECTED")
@@ -265,7 +372,7 @@ def download_video(url, output_dir, resolution):
             selected_format = resolution_map.get(resolution, "bestvideo[height=1080]+bestaudio/best")
             print(f"Resolution Selected: {resolution}, Format Selected: {selected_format}")
 
-            ydl_opts = {
+            ydl_opts = create_ytdlp_options({
                 'format': selected_format,
                 'merge_output_format': 'mp4',
                 'outtmpl': output_file,
@@ -278,7 +385,7 @@ def download_video(url, output_dir, resolution):
                 'nocheckcertificate': True,
                 'concurrent_fragments': 5,
                 'progress_hooks': [progress_hook],  # 🏎️ Show progress
-            }
+            })
 
         print("⏬ Starting yt-dlp download...")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -308,7 +415,7 @@ def download_video(url, output_dir, resolution):
 
         # Check file codecs after download
         probe_cmd = [
-            "ffprobe", "-v", "error", "-show_entries",
+            runtime_binary_path("ffprobe") or "ffprobe", "-v", "error", "-show_entries",
             "stream=codec_type,codec_name", "-of", "default=noprint_wrappers=1",
             output_file
         ]

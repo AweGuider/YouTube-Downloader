@@ -15,6 +15,10 @@ Sequence the work from `docs/specs/public-release-readiness-spec.md` so the proj
 
 Fix distribution and diagnostics first, because public users need the app to start and explain missing/outdated dependencies before deeper download behavior can be trusted. Then stabilize download flows, simplify the UI around the corrected behavior, and finish with repository/release polish.
 
+## Phase Progress
+
+- 2026-08-24: Phase 1 passed. The build baseline now resolves and bundles `ffmpeg`, `ffprobe`, and a JavaScript runtime, includes dependency/build metadata, and produced an EXE that was confirmed to run on another Windows device. Remaining release risk: bundled binary licensing still needs documentation before public release.
+
 ## Phase 1: Reproducible Packaging Baseline
 
 ### Outcome

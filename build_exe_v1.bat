@@ -1,5 +1,3 @@
 @echo off
-echo Building the executable...
-python -m PyInstaller --onefile --windowed --add-data "ffmpeg.exe;." downloader.py
-echo Done!
-pause
+echo build_exe_v1.bat is deprecated. Running build_exe_latest.bat instead.
+call "%~dp0build_exe_latest.bat"
