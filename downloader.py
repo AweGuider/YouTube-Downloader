@@ -6,12 +6,16 @@ import sys
 import yt_dlp
 import tempfile
 import functools
+import importlib.metadata
+import json
 import re
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import threading
 import shutil
 import subprocess
+import urllib.error
+import urllib.request
 
 ### TODO:
 # - Downloading just audio does not update the progress hook and is always stuck at 'Connecting' until it's done
@@ -51,6 +55,15 @@ fetch_delay = None  # Global variable to track scheduled fetch calls
 
 # For future implementation of stable progress UI update
 latest_progress = {"percent": "0%", "speed": "N/A", "eta": "Unknown"}
+
+APP_VERSION = "0.1.0-dev"
+STALE_MEI_AGE_SECONDS = 24 * 60 * 60
+JS_RUNTIME_CANDIDATES = (
+    ("deno", "deno", (2, 3, 0), True),
+    ("node", "node", (22, 0, 0), False),
+    ("bun", "bun", (1, 2, 11), True),
+    ("quickjs", "qjs", (2023, 12, 9), False),
+)
 
 def app_runtime_dir():
     """Returns the PyInstaller extraction folder when frozen, otherwise the source folder."""
@@ -120,6 +133,29 @@ def prepend_runtime_tools_to_path():
     if runtime_dir and runtime_dir not in current_path.split(os.pathsep):
         os.environ["PATH"] = runtime_dir + os.pathsep + current_path
 
+def iter_js_runtime_candidates():
+    for source, resolver in (("bundled", bundled_binary_path), ("system", system_binary_path)):
+        for runtime_name, executable_name, min_version, needs_remote_components in JS_RUNTIME_CANDIDATES:
+            runtime_path = resolver(executable_name)
+            if runtime_path:
+                yield {
+                    "name": runtime_name,
+                    "executable": executable_name,
+                    "path": runtime_path,
+                    "min_version": min_version,
+                    "needs_remote_components": needs_remote_components,
+                    "source": source,
+                }
+
+@functools.lru_cache(maxsize=1)
+def selected_js_runtime():
+    for runtime in iter_js_runtime_candidates():
+        is_usable, version_line, _ = probe_js_runtime(runtime)
+        if is_usable:
+            runtime["version_line"] = version_line
+            return runtime
+    return None
+
 def create_ytdlp_options(overrides=None):
     options = {"quiet": True}
 
@@ -127,29 +163,11 @@ def create_ytdlp_options(overrides=None):
     if ffmpeg_dir:
         options["ffmpeg_location"] = ffmpeg_dir
 
-    js_runtime_candidates = (
-        ("deno", "deno"),
-        ("node", "node"),
-        ("bun", "bun"),
-        ("quickjs", "qjs"),
-    )
-
-    for runtime_name, executable_name in js_runtime_candidates:
-        runtime_path = bundled_binary_path(executable_name)
-        if runtime_path:
-            options["js_runtimes"] = {runtime_name: {"path": runtime_path}}
-            if runtime_name in {"deno", "bun"}:
-                options["remote_components"] = ["ejs:npm"]
-            break
-
-    if "js_runtimes" not in options:
-        for runtime_name, executable_name in js_runtime_candidates:
-            runtime_path = system_binary_path(executable_name)
-            if runtime_path:
-                options["js_runtimes"] = {runtime_name: {"path": runtime_path}}
-                if runtime_name in {"deno", "bun"}:
-                    options["remote_components"] = ["ejs:npm"]
-                break
+    runtime = selected_js_runtime()
+    if runtime:
+        options["js_runtimes"] = {runtime["name"]: {"path": runtime["path"]}}
+        if runtime["needs_remote_components"]:
+            options["remote_components"] = ["ejs:npm"]
 
     if overrides:
         options.update(overrides)
@@ -157,6 +175,216 @@ def create_ytdlp_options(overrides=None):
     return options
 
 prepend_runtime_tools_to_path()
+
+def diagnostic(status, label, detail):
+    return {"status": status, "label": label, "detail": detail}
+
+def package_version(package_name):
+    try:
+        return importlib.metadata.version(package_name)
+    except importlib.metadata.PackageNotFoundError:
+        return None
+
+def first_output_line(text):
+    for line in text.splitlines():
+        if line.strip():
+            return clean_text(line.strip())
+    return ""
+
+def compact_version_line(line):
+    words = line.split()
+    if len(words) >= 3 and words[1].lower() == "version":
+        return f"{words[0]} {words[2]}"
+    return line[:120]
+
+def js_runtime_version_arg(runtime_name):
+    return "--help" if runtime_name == "quickjs" else "--version"
+
+def run_command(args, timeout=5):
+    return subprocess.run(
+        args,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+
+def parse_version_tuple(text):
+    numbers = re.findall(r"\d+", text)
+    return tuple(int(number) for number in numbers[:3])
+
+def compare_versions(left, right):
+    left_parts = parse_version_tuple(left)
+    right_parts = parse_version_tuple(right)
+    length = max(len(left_parts), len(right_parts))
+    left_parts += (0,) * (length - len(left_parts))
+    right_parts += (0,) * (length - len(right_parts))
+    return (left_parts > right_parts) - (left_parts < right_parts)
+
+def probe_js_runtime(runtime):
+    try:
+        result = run_command([runtime["path"], js_runtime_version_arg(runtime["name"])])
+    except Exception as e:
+        return False, "", f"{runtime['name']} found but could not run: {e}"
+
+    if result.returncode != 0 and runtime["name"] != "quickjs":
+        return False, "", f"{runtime['name']} returned {result.returncode}"
+
+    version_line = first_output_line(result.stdout or result.stderr) or runtime["name"]
+    return True, version_line, None
+
+def check_binary_version(name):
+    binary_path = runtime_binary_path(name)
+    if not binary_path:
+        return diagnostic("fail", name, "missing")
+
+    try:
+        result = run_command([binary_path, "-version"])
+    except Exception as e:
+        return diagnostic("fail", name, f"found but could not run: {e}")
+
+    if result.returncode != 0:
+        return diagnostic("fail", name, f"found but returned {result.returncode}")
+
+    version_line = compact_version_line(first_output_line(result.stdout or result.stderr))
+    source = "bundled" if bundled_binary_path(name) else "system"
+    return diagnostic("pass", name, f"{version_line} ({source})")
+
+def check_js_runtime():
+    runtime = selected_js_runtime()
+    if not runtime:
+        failures = []
+        for candidate in iter_js_runtime_candidates():
+            _, _, error = probe_js_runtime(candidate)
+            if error:
+                failures.append(error)
+
+        if failures:
+            return diagnostic("fail", "JS runtime", "; ".join(failures[:2]))
+        return diagnostic("fail", "JS runtime", "missing Deno, Node, Bun, or QuickJS")
+
+    version_line = runtime.get("version_line") or runtime["name"]
+    version_text = " ".join(re.findall(r"\d+(?:\.\d+)*", version_line)[:1])
+    if version_text and runtime["min_version"]:
+        min_text = ".".join(str(part) for part in runtime["min_version"])
+        if compare_versions(version_text, min_text) < 0:
+            return diagnostic("warn", "JS runtime", f"{version_line}; recommended >= {min_text}")
+
+    return diagnostic("pass", "JS runtime", f"{version_line} ({runtime['source']})")
+
+def check_ytdlp_latest(local_version):
+    try:
+        with urllib.request.urlopen("https://pypi.org/pypi/yt-dlp/json", timeout=5) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except Exception as e:
+        return diagnostic("warn", "yt-dlp update", f"could not check latest version: {e}")
+
+    latest_version = data.get("info", {}).get("version")
+    if not latest_version:
+        return diagnostic("warn", "yt-dlp update", "latest version unknown")
+
+    if compare_versions(local_version, latest_version) < 0:
+        return diagnostic("warn", "yt-dlp update", f"local {local_version}, latest {latest_version}")
+
+    return diagnostic("pass", "yt-dlp update", f"local {local_version} is current")
+
+def check_network():
+    try:
+        with urllib.request.urlopen("https://www.youtube.com/generate_204", timeout=5) as response:
+            status_code = getattr(response, "status", response.getcode())
+    except Exception as e:
+        return diagnostic("warn", "Network", f"YouTube check failed: {e}")
+
+    if 200 <= status_code < 400:
+        return diagnostic("pass", "Network", "YouTube reachable")
+    return diagnostic("warn", "Network", f"YouTube returned HTTP {status_code}")
+
+def check_pyinstaller_temp_leftovers():
+    temp_root = tempfile.gettempdir()
+    current_runtime = os.path.realpath(app_runtime_dir())
+    stale_count = 0
+
+    try:
+        entries = os.listdir(temp_root)
+    except OSError as e:
+        return diagnostic("warn", "Temp cleanup", f"could not inspect Temp: {e}")
+
+    now = time.time()
+    for entry in entries:
+        if not entry.startswith("_MEI"):
+            continue
+
+        path = os.path.realpath(os.path.join(temp_root, entry))
+        if path == current_runtime or not os.path.isdir(path):
+            continue
+
+        try:
+            age = now - os.path.getmtime(path)
+        except OSError:
+            continue
+
+        if age >= STALE_MEI_AGE_SECONDS:
+            stale_count += 1
+
+    if stale_count:
+        return diagnostic("warn", "Temp cleanup", f"{stale_count} old PyInstaller temp folder(s) found")
+    return diagnostic("pass", "Temp cleanup", "no old PyInstaller temp folders found")
+
+def run_startup_diagnostics():
+    results = [
+        diagnostic("pass", "App", f"{APP_VERSION} ({'EXE' if getattr(sys, 'frozen', False) else 'source'})")
+    ]
+
+    ytdlp_version = getattr(yt_dlp.version, "__version__", None) or package_version("yt-dlp")
+    if ytdlp_version:
+        results.append(diagnostic("pass", "yt-dlp", ytdlp_version))
+        results.append(check_ytdlp_latest(ytdlp_version))
+    else:
+        results.append(diagnostic("fail", "yt-dlp", "version unknown"))
+
+    ejs_version = package_version("yt-dlp-ejs")
+    if ejs_version:
+        results.append(diagnostic("pass", "yt-dlp-ejs", ejs_version))
+    else:
+        results.append(diagnostic("fail", "yt-dlp-ejs", "missing"))
+
+    results.append(check_binary_version("ffmpeg"))
+    results.append(check_binary_version("ffprobe"))
+    results.append(check_js_runtime())
+    results.append(check_network())
+    results.append(check_pyinstaller_temp_leftovers())
+    return results
+
+def format_diagnostics(results):
+    counts = {"pass": 0, "warn": 0, "fail": 0}
+    for result in results:
+        counts[result["status"]] += 1
+
+    lines = [f"Diagnostics: {counts['pass']} OK, {counts['warn']} warning(s), {counts['fail']} failure(s)"]
+    labels = {"pass": "OK", "warn": "WARN", "fail": "FAIL"}
+    for result in results:
+        lines.append(f"[{labels[result['status']]}] {result['label']}: {result['detail']}")
+    return "\n".join(lines)
+
+def diagnostics_color(results):
+    statuses = {result["status"] for result in results}
+    if "fail" in statuses:
+        return "#b00020"
+    if "warn" in statuses:
+        return "#8a5a00"
+    return "#1b6b34"
+
+def apply_startup_diagnostics(results):
+    diagnostics_label.config(text=format_diagnostics(results), fg=diagnostics_color(results))
+
+def run_startup_diagnostics_async():
+    diagnostics_label.config(text="Diagnostics: checking...", fg="#333333")
+
+    def worker():
+        results = run_startup_diagnostics()
+        root.after(0, lambda: apply_startup_diagnostics(results))
+
+    threading.Thread(target=worker, daemon=True).start()
 
 def open_download_folder():
     """ Opens the download folder in File Explorer. """
@@ -301,17 +529,19 @@ def download_video_thread(url):
     """ Runs the video download process in a separate thread. """
     global output_directory, selected_resolution
 
-    success = download_video(url, output_directory, selected_resolution)
+    success, error_message = download_video(url, output_directory, selected_resolution)
 
     # Update the UI after the download completes (use root.after() to avoid threading issues)
-    root.after(0, lambda: update_ui_after_download(success))
+    root.after(0, lambda: update_ui_after_download(success, error_message))
 
-def update_ui_after_download(success):
+def update_ui_after_download(success, error_message=None):
     """ Updates the UI after the download is completed. """
     if success:
         status_label.config(text="✅ Download Complete!")
     else:
-        status_label.config(text="❌ Download Failed")
+        details = error_message or "Unknown error"
+        status_label.config(text=f"❌ Download Failed\n{details}")
+        messagebox.showerror("Download Failed", details)
 
     # Re-enable the download button
     download_button.config(state=tk.NORMAL)
@@ -438,11 +668,12 @@ def download_video(url, output_dir, resolution):
 
         finalize_download(final_path, upload_date)
 
-        return True
+        return True, None
 
     except Exception as e:
-        print(f"❌ Error downloading media: {e}")
-        return False
+        error_message = clean_text(str(e)) or e.__class__.__name__
+        print(f"❌ Error downloading media: {error_message}")
+        return False, error_message
     
 def preserve_date_created(filepath, created_time):
     """ Restores the original 'Date Created' timestamp on Windows. """
@@ -497,7 +728,7 @@ def fill_in_default_url():
 # 🖥️ GUI Setup
 root = tk.Tk()
 root.title("YouTube Video Downloader")
-root.geometry("600x600")
+root.geometry("700x760")
 
 # Variable to store cleanup option
 delete_temp_files = tk.BooleanVar(value=True)  # Default: Enabled
@@ -505,6 +736,9 @@ delete_temp_files = tk.BooleanVar(value=True)  # Default: Enabled
 # Variable to store whether "Audio Only" is enabled
 audio_only = tk.BooleanVar(value=False)
 selected_audio_format = tk.StringVar(value="MP3")  # Default format
+
+diagnostics_label = tk.Label(root, text="Diagnostics: checking...", font=("Arial", 9), justify=tk.LEFT, anchor="w", wraplength=660)
+diagnostics_label.pack(pady=8, padx=10, fill=tk.X)
 
 tk.Label(root, text="Enter YouTube URL:", font=("Arial", 12)).pack(pady=5)
 
@@ -570,8 +804,10 @@ download_button = tk.Button(root, text="Download", command=download_video_gui)
 download_button.pack(pady=10)
 
 # Status label
-status_label = tk.Label(root, text="", font=("Arial", 10))
+status_label = tk.Label(root, text="", font=("Arial", 10), wraplength=660, justify=tk.LEFT)
 status_label.pack()
+
+run_startup_diagnostics_async()
 
 # Run GUI
 root.mainloop()

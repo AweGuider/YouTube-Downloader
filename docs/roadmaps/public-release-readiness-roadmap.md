@@ -18,6 +18,7 @@ Fix distribution and diagnostics first, because public users need the app to sta
 ## Phase Progress
 
 - 2026-08-24: Phase 1 passed. The build baseline now resolves and bundles `ffmpeg`, `ffprobe`, and a JavaScript runtime, includes dependency/build metadata, and produced an EXE that was confirmed to run on another Windows device. Remaining release risk: bundled binary licensing still needs documentation before public release.
+- 2026-08-24: Phase 2 passed for source-run validation. Startup diagnostics report app/dependency/network/temp status in the GUI with `9 OK, 0 warning(s), 0 failure(s)`, and download failures now surface the real error. Remaining release risk: diagnostics need EXE validation after the local Tcl/Tk build environment is repaired.
 
 ## Phase 1: Reproducible Packaging Baseline
 
