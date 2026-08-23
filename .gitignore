@@ -15,5 +15,6 @@ downloader.spec
 Thumbs.db
 
 # Ignore project-specific files
+*.exe
 *.zip
 build_log*.txt
