@@ -13,7 +13,8 @@ import shutil
 import subprocess
 
 ### TODO:
-# - [IMPORTANT - CHECK] Audio download seems to be broken, it ends up having .mp3 and .mp3.mp3 in the Temp folder and get's stuck in 'Connecting'
+# - Downloading just audio does not update the progress hook and is always stuck at 'Connecting' until it's done
+# - Audio download seems to be broken, it ends up having .mp3 and .mp3.mp3 in the Temp folder
 # - After Unsuccess get rid of the temp folder (currently only cleans up after success)
 # - Can't paste with a different keyboard layout like Russian for example
 # - Add button to Paste link from clipboard (clear + insert from clipboard)
