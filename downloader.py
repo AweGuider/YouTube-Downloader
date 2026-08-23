@@ -8,6 +8,7 @@ import tempfile
 import functools
 import importlib.metadata
 import json
+import queue
 import re
 import tkinter as tk
 from tkinter import filedialog, messagebox
@@ -16,20 +17,15 @@ import shutil
 import subprocess
 import urllib.error
 import urllib.request
+from datetime import datetime
 
 ### TODO:
-# - Downloading just audio does not update the progress hook and is always stuck at 'Connecting' until it's done
-# - Audio download seems to be broken, it ends up having .mp3 and .mp3.mp3 in the Temp folder
-# - After Unsuccess get rid of the temp folder (currently only cleans up after success)
 # - Can't paste with a different keyboard layout like Russian for example
 # - Add button to Paste link from clipboard (clear + insert from clipboard)
-# - Can't finalize download (move file to the download folder) if such file already exists. Can't download twice in a row.
-# - Add an option to either keep upload date or use current download date
 # - Change application Icon
 # - Improve UI instead of everything being from top to bottom, make similar groups like for URL
 # - Add a button to choose default Download Folder as the one in the Downloads/YouTubeDownloads
 # - (Skip) Stop merging
-# - Close CMD when app is closed
 
 ### Command to create .exe out of .py
 # python -m PyInstaller --onefile downloader.py
@@ -52,6 +48,11 @@ output_directory = default_output_folder
 selected_resolution = "1080p"  # Default resolution
 
 fetch_delay = None  # Global variable to track scheduled fetch calls
+fetch_request_id = 0
+download_thread = None
+download_cancel_event = None
+is_closing = False
+ui_queue = queue.Queue()
 
 # For future implementation of stable progress UI update
 latest_progress = {"percent": "0%", "speed": "N/A", "eta": "Unknown"}
@@ -382,9 +383,119 @@ def run_startup_diagnostics_async():
 
     def worker():
         results = run_startup_diagnostics()
-        root.after(0, lambda: apply_startup_diagnostics(results))
+        queue_ui("diagnostics", results)
 
     threading.Thread(target=worker, daemon=True).start()
+
+class DownloadCancelled(Exception):
+    pass
+
+def queue_ui(action, *args):
+    ui_queue.put((action, args))
+
+def process_ui_queue():
+    while True:
+        try:
+            action, args = ui_queue.get_nowait()
+        except queue.Empty:
+            break
+
+        if action == "diagnostics":
+            apply_startup_diagnostics(*args)
+        elif action == "status":
+            status_label.config(text=args[0])
+        elif action == "resolution_results":
+            apply_resolution_results(*args)
+        elif action == "download_done":
+            update_ui_after_download(*args)
+
+    if not is_closing or download_is_active():
+        root.after(100, process_ui_queue)
+
+def queue_status(text):
+    queue_ui("status", text)
+
+def download_is_active():
+    return download_thread is not None and download_thread.is_alive()
+
+def output_template_path(temp_dir, media_title):
+    safe_title = media_title.replace("%", "%%")
+    return os.path.join(temp_dir, f"{safe_title}.%(ext)s")
+
+def unique_destination_path(directory, filename):
+    base_name, extension = os.path.splitext(filename)
+    candidate = os.path.join(directory, filename)
+    counter = 1
+
+    while os.path.exists(candidate):
+        candidate = os.path.join(directory, f"{base_name} ({counter}){extension}")
+        counter += 1
+
+    return candidate
+
+def find_downloaded_file(temp_dir, media_title, preferred_extension, alternate_extensions=()):
+    extensions = [preferred_extension.lower()]
+    extensions.extend(extension.lower() for extension in alternate_extensions)
+
+    for extension in extensions:
+        expected_path = os.path.join(temp_dir, f"{media_title}.{extension}")
+        if os.path.exists(expected_path):
+            return expected_path
+
+    candidates = []
+    for entry in os.listdir(temp_dir):
+        path = os.path.join(temp_dir, entry)
+        if not os.path.isfile(path):
+            continue
+
+        extension = os.path.splitext(entry)[1].lstrip(".").lower()
+        if extension in extensions:
+            candidates.append(path)
+
+    if candidates:
+        return max(candidates, key=os.path.getmtime)
+
+    files = [os.path.join(temp_dir, entry) for entry in os.listdir(temp_dir)]
+    files = [path for path in files if os.path.isfile(path)]
+    if len(files) == 1:
+        return files[0]
+
+    raise FileNotFoundError(f"Could not find downloaded .{preferred_extension} file")
+
+def ensure_extension(filepath, extension):
+    if filepath.lower().endswith(f".{extension.lower()}"):
+        return filepath
+
+    directory = os.path.dirname(filepath)
+    base_name = os.path.splitext(os.path.basename(filepath))[0]
+    renamed_path = unique_destination_path(directory, f"{base_name}.{extension}")
+    os.rename(filepath, renamed_path)
+    return renamed_path
+
+def cleanup_temp_dir(temp_dir, cleanup_enabled):
+    if cleanup_enabled and temp_dir and os.path.isdir(temp_dir):
+        print("Cleaning up temporary files...")
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+def upload_date_to_timestamp(upload_date):
+    if not upload_date:
+        return None
+
+    try:
+        return datetime.strptime(upload_date, "%Y%m%d").timestamp()
+    except ValueError:
+        return None
+
+def video_format_for_resolution(resolution):
+    if resolution == "Highest Available":
+        return "bestvideo*+bestaudio/best"
+
+    match = re.search(r"(\d+)", resolution or "")
+    if not match:
+        return "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best[height<=1080]/best"
+
+    height = int(match.group(1))
+    return f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best[height<={height}]/best"
 
 def open_download_folder():
     """ Opens the download folder in File Explorer. """
@@ -423,88 +534,117 @@ def toggle_audio_mode():
     else:
         resolution_dropdown.config(state=tk.NORMAL)  # Enable resolution dropdown
         audio_format_dropdown.config(state=tk.DISABLED)  # Disable format dropdown
-    
+
 def clean_text(text):
     """ Removes unwanted ANSI escape codes from yt-dlp output. """
     ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
     return ansi_escape.sub('', text)
 
-def progress_hook(d):
-    """ Updates the status label with download progress. """
-    if d['status'] == 'downloading':
-        percent = clean_text(d.get('_percent_str', '0%'))
-        speed = clean_text(d.get('_speed_str', 'N/A'))
-        eta = clean_text(d.get('_eta_str', 'Unknown'))
+def make_progress_hook(cancel_event):
+    """Creates a yt-dlp hook that reports progress through the main UI queue."""
+    def hook(d):
+        if cancel_event.is_set():
+            raise DownloadCancelled("Download cancelled")
 
-        # Cleaned-up progress message with line breaks for better readability
-        progress_text = f"⏳ Progress: {percent}\n🚀 Speed: {speed}\n⏳ ETA: {eta}"
+        if d["status"] == "downloading":
+            percent = clean_text(d.get("_percent_str", "0%"))
+            speed = clean_text(d.get("_speed_str", "N/A"))
+            eta = clean_text(d.get("_eta_str", "Unknown"))
+            queue_status(f"Progress: {percent}\nSpeed: {speed}\nETA: {eta}")
+        elif d["status"] == "finished":
+            queue_status("Processing downloaded file...")
+        else:
+            queue_status("Working...")
 
-        # Schedule UI update
-        root.after(1000, lambda: status_label.config(text=progress_text))
-    
-    elif d['status'] == 'finished':
-        root.after(1000, lambda: status_label.config(text="✅ Download Complete!"))
-
-    else:
-        root.after(1000, lambda: status_label.config(text="🔄 Merging..."))
+    return hook
 
 def download_video_gui():
     """
     Function triggered when the Download button is clicked.
     """
+    global download_thread, download_cancel_event
+
     url = url_entry.get().strip()
-    
+
     if not url:
         messagebox.showerror("Error", "Please enter a YouTube URL")
         return
+
+    if download_is_active():
+        messagebox.showwarning("Download In Progress", "Please wait for the current download to finish.")
+        return
+
+    download_settings = {
+        "url": url,
+        "output_dir": output_directory,
+        "resolution": resolution_menu.get() or selected_resolution,
+        "is_audio_only": audio_only.get(),
+        "audio_format": selected_audio_format.get().lower(),
+        "cleanup_enabled": delete_temp_files.get(),
+        "preserve_upload_date": preserve_upload_date.get(),
+    }
+    download_cancel_event = threading.Event()
 
     # Disable the button to prevent multiple clicks
     download_button.config(state=tk.DISABLED)
     status_label.config(text="⏳ Connecting...")
 
     # Run the download in a separate thread
-    download_thread = threading.Thread(target=download_video_thread, args=(url,))
+    download_thread = threading.Thread(
+        target=download_video_thread,
+        args=(download_settings, download_cancel_event),
+    )
     download_thread.start()
 
 def update_resolution_options(*args):
-    """ Automatically fetch resolutions when URL is entered. """
-
-    """ Updates the resolution dropdown based on available formats. """
-    global fetch_delay
+    """Debounces resolution fetching while the URL is being edited."""
+    global fetch_delay, fetch_request_id
     url = url_entry.get().strip()
 
-    if not url:
-        # messagebox.showerror("Error", "Please enter a YouTube URL first.")
-        return  # Don't fetch if URL is empty
-    
-        # **Cancel any previous scheduled fetch call**
     if fetch_delay:
         root.after_cancel(fetch_delay)
+        fetch_delay = None
 
-    # **Disable dropdown while fetching**
+    if not url:
+        return
+
+    fetch_request_id += 1
+    request_id = fetch_request_id
+    fetch_delay = root.after(500, lambda: start_resolution_fetch(request_id, url))
+
+def start_resolution_fetch(request_id, url):
+    global fetch_delay
+    fetch_delay = None
+
+    if request_id != fetch_request_id:
+        return
+
     resolution_dropdown.config(state=tk.DISABLED)
-    resolution_menu.set("Fetching...")  # Show fetching status
+    resolution_menu.set("Fetching...")
 
-    # **Fetch resolutions in background**
-    root.after(300, lambda: fetch_and_update_resolutions(url))
+    threading.Thread(
+        target=fetch_resolutions_thread,
+        args=(request_id, url),
+        daemon=True,
+    ).start()
 
-def fetch_and_update_resolutions(url):
-    """ Fetch available resolutions and update the dropdown. """
+def fetch_resolutions_thread(request_id, url):
     resolutions = fetch_available_resolutions(url)
+    queue_ui("resolution_results", request_id, url, resolutions)
 
-    # **Clear old options & add new ones**
-    resolution_dropdown['menu'].delete(0, 'end')
+def apply_resolution_results(request_id, url, resolutions):
+    if request_id != fetch_request_id or url != url_entry.get().strip():
+        return
+
+    resolution_dropdown["menu"].delete(0, "end")
     for res in resolutions:
-        resolution_dropdown['menu'].add_command(label=res, command=lambda v=res: set_resolution(v))
+        resolution_dropdown["menu"].add_command(label=res, command=lambda v=res: set_resolution(v))
 
-    # **Set the first available resolution as default**
     resolution_menu.set(resolutions[0])
-
-    # # Set the first available resolution as default
     set_resolution(resolutions[0])
 
-    # **Re-enable the dropdown after fetching**
-    resolution_dropdown.config(state=tk.NORMAL)
+    state = tk.DISABLED if audio_only.get() else tk.NORMAL
+    resolution_dropdown.config(state=state)
 
 def fetch_available_resolutions(url):
     """ Fetch available video resolutions for a given YouTube URL. """
@@ -525,35 +665,46 @@ def fetch_available_resolutions(url):
         print(f"❌ Error fetching resolutions: {e}")
         return ["Highest Available"]  # Default if fetching fails
 
-def download_video_thread(url):
+def download_video_thread(download_settings, cancel_event):
     """ Runs the video download process in a separate thread. """
-    global output_directory, selected_resolution
+    success, error_message, final_path = download_video(download_settings, cancel_event)
+    queue_ui("download_done", success, error_message, final_path)
 
-    success, error_message = download_video(url, output_directory, selected_resolution)
-
-    # Update the UI after the download completes (use root.after() to avoid threading issues)
-    root.after(0, lambda: update_ui_after_download(success, error_message))
-
-def update_ui_after_download(success, error_message=None):
+def update_ui_after_download(success, error_message=None, final_path=None):
     """ Updates the UI after the download is completed. """
+    global download_thread, download_cancel_event
+
+    download_thread = None
+    download_cancel_event = None
+
+    if is_closing:
+        root.destroy()
+        return
+
     if success:
         status_label.config(text="✅ Download Complete!")
+        messagebox.showinfo("Download Complete", f"File saved to:\n{final_path}")
+        open_download_folder()
     else:
         details = error_message or "Unknown error"
         status_label.config(text=f"❌ Download Failed\n{details}")
-        messagebox.showerror("Download Failed", details)
+        if details != "Download cancelled":
+            messagebox.showerror("Download Failed", details)
 
     # Re-enable the download button
     download_button.config(state=tk.NORMAL)
 
-def download_video(url, output_dir, resolution):
+def download_video(download_settings, cancel_event):
     """ Downloads a YouTube video or extracts audio based on user selection. """
+    url = download_settings["url"]
+    output_dir = download_settings["output_dir"]
+    resolution = download_settings["resolution"]
+    is_audio_only = download_settings["is_audio_only"]
+    audio_format = download_settings["audio_format"]
+    cleanup_enabled = download_settings["cleanup_enabled"]
+    preserve_upload_date_setting = download_settings["preserve_upload_date"]
 
-    is_audio_only = audio_only.get()
     print(f"🎥 Fetching media... Audio Only: {is_audio_only}")
-
-    # Ensure audio_format is always defined, whether in audio-only or video download mode
-    audio_format = selected_audio_format.get().lower() if is_audio_only else None
 
     # Use a temporary directory for processing
     temp_dir = tempfile.mkdtemp()
@@ -561,60 +712,53 @@ def download_video(url, output_dir, resolution):
     # If the user has not changed the output folder, use the default folder
     if output_dir == os.getcwd():
         output_dir = default_output_folder
-        
+
     # Ensure the output folder exists
     os.makedirs(output_dir, exist_ok=True)
 
     try:
+        if cancel_event.is_set():
+            raise DownloadCancelled("Download cancelled")
+
         with yt_dlp.YoutubeDL(create_ytdlp_options()) as ydl:
             info_dict = ydl.extract_info(url, download=False)
             media_title = sanitize_filename(info_dict.get('title', 'output'))  # Sanitize filename
             upload_date = info_dict.get('upload_date', None)  # ✅ Extract Upload Date (YYYYMMDD)
 
-        # Check if Audio-Only mode is enabled
-        if is_audio_only:
-            output_file = os.path.join(temp_dir, f"{media_title}.{audio_format}")
+        progress = make_progress_hook(cancel_event)
+        output_template = output_template_path(temp_dir, media_title)
 
+        if is_audio_only:
             ydl_opts = create_ytdlp_options({
                 'format': 'bestaudio/best',  # Download best audio only
-                'outtmpl': output_file,  # Save as the selected format
+                'outtmpl': output_template,
                 'postprocessors': [{
                     'key': 'FFmpegExtractAudio',
                     'preferredcodec': audio_format,
                     'preferredquality': '192',
-                }]
+                }],
+                'fragment_retries': 10,
+                'concurrent_fragments': 5,
+                'progress_hooks': [progress],
             })
 
         else:
             print("🛠️ VIDEO MODE DETECTED")
-            output_file = os.path.join(temp_dir, f"{media_title}.mp4")  # Ensure MP4 is set correctly
-            print(f"🧾 Output file will be: {output_file}")
-
-            # Normal video download
-            resolution_map = {
-                "1080p": "bestvideo[height=1080]+bestaudio/best",
-                "720p": "bestvideo[height=720]+bestaudio/best",
-                "480p": "bestvideo[height=480]+bestaudio/best",
-                "360p": "bestvideo[height=360]+bestaudio/best",
-                "Highest Available": "bestvideo+bestaudio/best"
-            }
-
-            selected_format = resolution_map.get(resolution, "bestvideo[height=1080]+bestaudio/best")
+            selected_format = video_format_for_resolution(resolution)
             print(f"Resolution Selected: {resolution}, Format Selected: {selected_format}")
 
             ydl_opts = create_ytdlp_options({
                 'format': selected_format,
                 'merge_output_format': 'mp4',
-                'outtmpl': output_file,
+                'outtmpl': output_template,
                 'postprocessor_args': [
                     '-c:a', 'aac',  # Convert audio to AAC (Windows-compatible)
                     '-b:a', '192k',  # Set audio bitrate to 192kbps for good quality
                     '-c:v', 'copy'  # Keep video unchanged (no re-encoding)
                 ],
                 'fragment_retries': 10,
-                'nocheckcertificate': True,
                 'concurrent_fragments': 5,
-                'progress_hooks': [progress_hook],  # 🏎️ Show progress
+                'progress_hooks': [progress],
             })
 
         print("⏬ Starting yt-dlp download...")
@@ -624,57 +768,50 @@ def download_video(url, output_dir, resolution):
         print(f"📂 Temp directory contents: {os.listdir(temp_dir)}")
 
         if is_audio_only:
-            expected_file = f"{output_file}.{audio_format}"
-            converted_file = f"{output_file}.m4a"
-
-            if os.path.exists(converted_file) and audio_format == "aac":
-                final_file = converted_file.replace(".m4a", ".aac")
-                os.rename(converted_file, final_file)
-            elif os.path.exists(expected_file):
-                final_file = expected_file
-            else:
-                final_file = output_file
-
-            # Fix double extensions
-            if final_file.endswith(f".{audio_format}.{audio_format}"):
-                fixed_name = final_file.rsplit(f".{audio_format}", 1)[0]
-                os.rename(final_file, fixed_name)
-                final_file = fixed_name
+            alternate_extensions = ("m4a",) if audio_format == "aac" else ()
+            final_file = find_downloaded_file(temp_dir, media_title, audio_format, alternate_extensions)
+            final_file = ensure_extension(final_file, audio_format)
         else:
-            final_file = output_file  # Video file path
+            final_file = find_downloaded_file(temp_dir, media_title, "mp4")
+            final_file = ensure_extension(final_file, "mp4")
 
         # Check file codecs after download
         probe_cmd = [
             runtime_binary_path("ffprobe") or "ffprobe", "-v", "error", "-show_entries",
             "stream=codec_type,codec_name", "-of", "default=noprint_wrappers=1",
-            output_file
+            final_file
         ]
         print("🔍 Running ffprobe to inspect output file:")
         try:
-            result = subprocess.run(probe_cmd, capture_output=True, text=True)
+            result = subprocess.run(
+                probe_cmd,
+                capture_output=True,
+                text=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
             print(result.stdout)
         except Exception as e:
             print(f"⚠️ ffprobe failed: {e}")
 
-        final_path = os.path.join(output_dir, os.path.basename(final_file))
-        os.rename(final_file, final_path)
+        final_path = unique_destination_path(output_dir, os.path.basename(final_file))
+        shutil.move(final_file, final_path)
 
         print(f"✅ Download complete: {final_path}")
 
-        # **Delete temporary files if the checkbox is enabled**
-        if delete_temp_files.get():
-            print("🗑️ Cleaning up temporary files...")
-            shutil.rmtree(temp_dir, ignore_errors=True)
+        finalize_download(final_path, upload_date, preserve_upload_date_setting)
 
-        finalize_download(final_path, upload_date)
+        return True, None, final_path
 
-        return True, None
-
+    except DownloadCancelled as e:
+        print(f"Download cancelled: {e}")
+        return False, str(e), None
     except Exception as e:
         error_message = clean_text(str(e)) or e.__class__.__name__
         print(f"❌ Error downloading media: {error_message}")
-        return False, error_message
-    
+        return False, error_message, None
+    finally:
+        cleanup_temp_dir(temp_dir, cleanup_enabled)
+
 def preserve_date_created(filepath, created_time):
     """ Restores the original 'Date Created' timestamp on Windows. """
     if platform.system() == "Windows":
@@ -690,26 +827,22 @@ def preserve_date_created(filepath, created_time):
                 print(f"✅ Restored 'Date Created' on Windows: {time.ctime(created_time)}")
         except Exception as e:
             print(f"⚠️ Could not restore 'Date Created': {e}")
-    
-def finalize_download(final_path, upload_date):
-    """ Final actions after download: show success & open folder. """
-    messagebox.showinfo("Download Complete", f"File saved to:\n{final_path}")
 
-    # ✅ Get the current timestamp to preserve "Date Created"
-    current_time = time.time()
+def finalize_download(final_path, upload_date, preserve_upload_date_setting):
+    """Applies final filesystem metadata after a successful download."""
+    if not preserve_upload_date_setting:
+        return
 
-    if upload_date:
-        try:
-            # ✅ Apply upload date to "Last Modified" and "Last Accessed"
-            os.utime(final_path, (current_time, current_time))
+    upload_timestamp = upload_date_to_timestamp(upload_date)
+    if not upload_timestamp:
+        return
 
-            print(f"✅ File timestamps updated: Modified/Accessed -> {upload_date}")
-
-        except Exception as e:
-            print(f"❌ Error updating timestamps: {e}")
-
-    # **Automatically open folder after successful download**
-    open_download_folder()
+    try:
+        os.utime(final_path, (upload_timestamp, upload_timestamp))
+        preserve_date_created(final_path, upload_timestamp)
+        print(f"✅ File timestamps updated from upload date: {upload_date}")
+    except Exception as e:
+        print(f"❌ Error updating timestamps: {e}")
 
 def sanitize_filename(filename):
     """ Removes or replaces invalid characters in filenames """
@@ -725,6 +858,19 @@ def fill_in_default_url():
     url_entry.insert(0, default_url)  # Pre-fills the entry box
     update_resolution_options()
 
+def on_close():
+    global is_closing
+
+    if download_is_active():
+        is_closing = True
+        if download_cancel_event:
+            download_cancel_event.set()
+        status_label.config(text="Canceling active download and cleaning up...")
+        download_button.config(state=tk.DISABLED)
+        return
+
+    root.destroy()
+
 # 🖥️ GUI Setup
 root = tk.Tk()
 root.title("YouTube Video Downloader")
@@ -732,6 +878,7 @@ root.geometry("700x760")
 
 # Variable to store cleanup option
 delete_temp_files = tk.BooleanVar(value=True)  # Default: Enabled
+preserve_upload_date = tk.BooleanVar(value=True)
 
 # Variable to store whether "Audio Only" is enabled
 audio_only = tk.BooleanVar(value=False)
@@ -799,6 +946,9 @@ open_folder_button.pack(pady=5)
 cleanup_checkbox = tk.Checkbutton(root, text="Delete Temp Files After Download", variable=delete_temp_files)
 cleanup_checkbox.pack(pady=5)
 
+timestamp_checkbox = tk.Checkbutton(root, text="Preserve Upload Date", variable=preserve_upload_date)
+timestamp_checkbox.pack(pady=5)
+
 # Download button
 download_button = tk.Button(root, text="Download", command=download_video_gui)
 download_button.pack(pady=10)
@@ -807,6 +957,8 @@ download_button.pack(pady=10)
 status_label = tk.Label(root, text="", font=("Arial", 10), wraplength=660, justify=tk.LEFT)
 status_label.pack()
 
+root.protocol("WM_DELETE_WINDOW", on_close)
+process_ui_queue()
 run_startup_diagnostics_async()
 
 # Run GUI
