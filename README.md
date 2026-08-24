@@ -6,6 +6,7 @@ A small Windows-first desktop downloader for saving individual YouTube videos or
 
 - Download one video URL at a time as MP4.
 - Download audio-only files as MP3, WAV, AAC, or FLAC.
+- Preview the checked video's thumbnail, title, readable length, channel, and upload date before downloading.
 - Choose best available quality or a quality at or below the selected resolution.
 - Save repeated downloads with unique filenames.
 - Show dependency diagnostics for `yt-dlp`, `yt-dlp-ejs`, JavaScript runtime support, `ffmpeg`, `ffprobe`, network access, and old PyInstaller temp folders.
@@ -22,7 +23,7 @@ The first public release target is Windows. The source may run on other platform
 3. Run `YouTubeDownloader_by_AweDev.exe`.
 4. If Windows SmartScreen appears, review the publisher/file details and choose whether to run it.
 
-The release EXE is intended to include the needed Python app package, `ffmpeg`, `ffprobe`, and a JavaScript runtime used by `yt-dlp`.
+The release EXE is intended to include the needed Python app package, thumbnail preview support, `ffmpeg`, `ffprobe`, and a JavaScript runtime used by `yt-dlp`.
 
 ## Run From Source
 
@@ -94,7 +95,7 @@ The build script asks for an EXE name, ZIP name, overwrite behavior, and whether
 
 Use this tool only for content you have the right to download. This project does not bypass DRM and does not grant rights to third-party content. You are responsible for following YouTube's terms and applicable law.
 
-Packaged releases may include third-party tools such as `yt-dlp`, `yt-dlp-ejs`, `ffmpeg`, `ffprobe`, and Node or Deno. Those tools are governed by their own licenses. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) before publishing release binaries.
+Packaged releases may include third-party tools and packages such as `yt-dlp`, `yt-dlp-ejs`, `Pillow`, `ffmpeg`, `ffprobe`, and Node or Deno. Those components are governed by their own licenses. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) before publishing release binaries.
 
 ## License
 

@@ -8,6 +8,7 @@ This project can package third-party tools so the Windows EXE works without a lo
 | --- | --- | --- |
 | `yt-dlp` | `yt-dlp[default]>=2026.8.19` | Unlicense. Some upstream release formats can include differently licensed bundled code; this app packages the Python package, not the standalone upstream executable. |
 | `yt-dlp-ejs` | `yt-dlp-ejs>=0.8.0` | Unlicense, with prebuilt wheel contents also including MIT and ISC licensed code. |
+| `Pillow` | `Pillow>=11.0.0` | Historical Permission Notice and Disclaimer license. Used for thumbnail preview image decoding and resizing. |
 | `PyInstaller` | `pyinstaller>=6.21.0` | GPLv2-or-later with PyInstaller's bootloader exception for distributing bundled applications. Build-time dependency. |
 
 ## Runtime Binaries

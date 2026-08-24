@@ -46,7 +46,7 @@ if not exist "%ICON_PATH%" (
 )
 
 echo Checking Python build prerequisites...
-python -c "import tkinter as tk; tk.Tcl(); import yt_dlp; import yt_dlp_ejs; import PyInstaller" >> "%LOG_FILE%" 2>&1
+python -c "import tkinter as tk; tk.Tcl(); import yt_dlp; import yt_dlp_ejs; import PIL; import PyInstaller" >> "%LOG_FILE%" 2>&1
 if errorlevel 1 (
     echo Python build prerequisite check failed. Check !LOG_FILE! for details.
     echo Repair Python Tcl/Tk support or use a Python install with working Tkinter, then rerun this script.
