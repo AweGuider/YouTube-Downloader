@@ -8,7 +8,7 @@ Make the YouTube downloader ready for a public GitHub release: installable by no
 
 - First release is Windows-first.
 - Current Python/Tkinter app stays unless UI cleanup proves insufficient.
-- Recommended license: MIT.
+- License: MIT.
 - App should warn about dependency/update issues; auto-update buttons are optional unless approved later.
 
 ## Goals
@@ -47,7 +47,7 @@ Make the YouTube downloader ready for a public GitHub release: installable by no
 - Remove unsafe/default `nocheckcertificate=True` unless a clearly labeled fallback setting exists.
 - Paste works across keyboard layouts and a paste-from-clipboard button is available.
 - Closing the app also stops/cleans any active worker process or background task safely.
-- Production UI removes default test URL and visible `Default` button.
+- Production UI removes the old default-filled URL and visible `Default` button, while keeping any test-link helper explicit.
 - App has a proper custom icon.
 
 ## Source Maintenance
@@ -88,6 +88,5 @@ Make the YouTube downloader ready for a public GitHub release: installable by no
 
 ## Open Decisions
 
-- Confirm license: MIT recommended.
 - Confirm Windows-only first release.
 - Confirm whether health checks only warn or also offer auto-update actions.

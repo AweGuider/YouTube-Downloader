@@ -21,6 +21,7 @@ Fix distribution and diagnostics first, because public users need the app to sta
 - 2026-08-24: Phase 2 passed for source-run validation. Startup diagnostics report app/dependency/network/temp status in the GUI with `9 OK, 0 warning(s), 0 failure(s)`, and download failures now surface the real error. Remaining release risk: diagnostics need EXE validation after the local Tcl/Tk build environment is repaired.
 - 2026-08-24: Phase 3 passed. Video download, repeated same-URL download, audio-only MP3, failure cleanup, and close-during-download behavior were manually verified. UI follow-up discovered during validation: fetched resolution choices can apply correctly under the hood while the dropdown display stays on the previously shown highest option.
 - 2026-08-24: Phase 4 passed. The public UI now has grouped controls, paste/test-link actions, mode-aware quality/format controls, a compact diagnostics panel, saved settings, an app icon, and fixed URL-field keyboard shortcuts.
+- 2026-08-24: Phase 5 is partially complete. Public README, MIT license, v1.0.0 release notes, ignore hygiene, and third-party notice guidance are in place. Remaining release gate: build the final artifact, include exact third-party license files/notices, and verify that artifact on a clean Windows machine.
 
 ## Phase 1: Reproducible Packaging Baseline
 
@@ -150,7 +151,7 @@ UI cleanup should follow corrected behavior so the interface reflects the real w
 
 ### Included Work
 
-- Remove the default test URL and visible `Default` button from production UI.
+- Remove the old default-filled URL and visible `Default` button from production UI; keep any test-link helper explicit.
 - Add a paste-from-clipboard button and reliable paste behavior across keyboard layouts.
 - Group controls by workflow: URL, mode, quality/format, destination, status/actions.
 - Hide or disable irrelevant fields based on video/audio mode.
@@ -222,4 +223,4 @@ Review the repo as a new visitor: clone/build instructions work, generated artif
 
 ## Recommended Next Step
 
-Start with Phase 1 and make one focused commit for packaging/release hygiene before touching downloader behavior.
+Build the final v1.0.0 release artifact, include exact third-party license files/notices, and verify that artifact on a clean Windows machine.
