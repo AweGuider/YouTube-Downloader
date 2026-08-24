@@ -11,7 +11,7 @@ import json
 import queue
 import re
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 import threading
 import shutil
 import subprocess
@@ -19,36 +19,53 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 
-### TODO:
-# - Can't paste with a different keyboard layout like Russian for example
-# - Add button to Paste link from clipboard (clear + insert from clipboard)
-# - Change application Icon
-# - Improve UI instead of everything being from top to bottom, make similar groups like for URL
-# - Add a button to choose default Download Folder as the one in the Downloads/YouTubeDownloads
-# - (Skip) Stop merging
-
 ### Command to create .exe out of .py
 # python -m PyInstaller --onefile downloader.py
 
-### For testing
-# 1080p - https://www.youtube.com/watch?v=ps74zeevi-g
-# 720p - https://www.youtube.com/watch?v=cUM8OCBy6Ls
-
-# Auto-fill test URL (Replace with any default video link)
-default_url = "https://www.youtube.com/watch?v=ps74zeevi-g"
+APP_NAME = "YouTube Downloader"
+APP_ID = "AweDevYouTubeDownloader"
+TEST_URL = "https://www.youtube.com/watch?v=QDia3e12czc"
+DEFAULT_RESOLUTION = "1080p"
+DEFAULT_AUDIO_FORMAT = "MP3"
+RESOLUTION_OPTIONS = ("Highest Available", "1080p", "720p", "480p", "360p")
+AUDIO_FORMATS = ("MP3", "WAV", "AAC", "FLAC")
 
 # Default output directory (current folder)
 # Set default output folder to "Downloads/YouTubeDownloads/"
 default_output_folder = os.path.join(os.path.expanduser("~"), "Downloads", "YouTubeDownloads")
 # Ensure the folder exists
 os.makedirs(default_output_folder, exist_ok=True)
-# Use this as the initial output directory
-output_directory = default_output_folder
 
-selected_resolution = "1080p"  # Default resolution
+def settings_path():
+    settings_root = os.environ.get("APPDATA") or os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(settings_root, APP_ID, "settings.json")
+
+def load_settings():
+    try:
+        with open(settings_path(), "r", encoding="utf-8") as settings_file:
+            data = json.load(settings_file)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+    return data if isinstance(data, dict) else {}
+
+saved_settings = load_settings()
+
+# Use this as the initial output directory
+saved_output_directory = saved_settings.get("output_directory")
+output_directory = saved_output_directory if isinstance(saved_output_directory, str) and saved_output_directory else default_output_folder
+try:
+    os.makedirs(output_directory, exist_ok=True)
+except OSError:
+    output_directory = default_output_folder
+    os.makedirs(output_directory, exist_ok=True)
+
+saved_resolution = saved_settings.get("selected_resolution")
+selected_resolution = saved_resolution if isinstance(saved_resolution, str) and saved_resolution else DEFAULT_RESOLUTION
 
 fetch_delay = None  # Global variable to track scheduled fetch calls
 fetch_request_id = 0
+url_ready_for_download = False
 download_thread = None
 download_cancel_event = None
 is_closing = False
@@ -69,6 +86,37 @@ JS_RUNTIME_CANDIDATES = (
 def app_runtime_dir():
     """Returns the PyInstaller extraction folder when frozen, otherwise the source folder."""
     return getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+
+def app_resource_path(*parts):
+    return os.path.join(app_runtime_dir(), *parts)
+
+def set_app_icon(window):
+    icon_path = app_resource_path("assets", "app.ico")
+    if not os.path.exists(icon_path):
+        return
+
+    try:
+        window.iconbitmap(icon_path)
+    except tk.TclError:
+        pass
+
+def save_settings():
+    data = {
+        "output_directory": output_directory,
+        "selected_resolution": selected_resolution,
+        "audio_only": audio_only.get(),
+        "audio_format": selected_audio_format.get(),
+        "delete_temp_files": delete_temp_files.get(),
+        "preserve_upload_date": preserve_upload_date.get(),
+    }
+
+    try:
+        path = settings_path()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as settings_file:
+            json.dump(data, settings_file, indent=2)
+    except OSError as e:
+        print(f"Could not save settings: {e}")
 
 def binary_name(name):
     if os.name == "nt" and not name.lower().endswith(".exe"):
@@ -375,11 +423,40 @@ def diagnostics_color(results):
         return "#8a5a00"
     return "#1b6b34"
 
+def show_diagnostics():
+    diagnostics_visible.set(True)
+    diagnostics_panel.grid()
+    diagnostics_button.config(text="Hide Diagnostics")
+
+def hide_diagnostics():
+    diagnostics_visible.set(False)
+    diagnostics_panel.grid_remove()
+    diagnostics_button.config(text="Show Diagnostics")
+
+def toggle_diagnostics():
+    if diagnostics_visible.get():
+        hide_diagnostics()
+    else:
+        show_diagnostics()
+
 def apply_startup_diagnostics(results):
-    diagnostics_label.config(text=format_diagnostics(results), fg=diagnostics_color(results))
+    formatted = format_diagnostics(results)
+    summary, _, details = formatted.partition("\n")
+    color = diagnostics_color(results)
+    diagnostics_summary_label.config(text=summary, foreground=color)
+    diagnostics_text.config(state=tk.NORMAL)
+    diagnostics_text.delete("1.0", tk.END)
+    diagnostics_text.insert("1.0", details)
+    diagnostics_text.config(state=tk.DISABLED)
+
+    if any(result["status"] != "pass" for result in results):
+        show_diagnostics()
 
 def run_startup_diagnostics_async():
-    diagnostics_label.config(text="Diagnostics: checking...", fg="#333333")
+    diagnostics_summary_label.config(text="Diagnostics: checking...", foreground="#333333")
+    diagnostics_text.config(state=tk.NORMAL)
+    diagnostics_text.delete("1.0", tk.END)
+    diagnostics_text.config(state=tk.DISABLED)
 
     def worker():
         results = run_startup_diagnostics()
@@ -417,6 +494,33 @@ def queue_status(text):
 
 def download_is_active():
     return download_thread is not None and download_thread.is_alive()
+
+def set_download_button_enabled(enabled):
+    if "download_button" in globals():
+        if enabled:
+            download_button.config(state=tk.NORMAL, bg="#1f8f4d", cursor="hand2")
+        else:
+            download_button.config(state=tk.DISABLED, bg="#8aa99a", cursor="")
+
+def set_quality_state(enabled):
+    if "resolution_dropdown" not in globals() or "audio_format_dropdown" not in globals():
+        return
+
+    if audio_only.get():
+        audio_format_dropdown.config(state="readonly")
+        resolution_dropdown.config(state="disabled")
+    else:
+        audio_format_dropdown.config(state="disabled")
+        resolution_dropdown.config(state="readonly" if enabled else "disabled")
+
+def set_link_ready(is_ready, status_text=None):
+    global url_ready_for_download
+    url_ready_for_download = is_ready
+    set_download_button_enabled(is_ready and not download_is_active())
+    set_quality_state(is_ready)
+
+    if status_text is not None:
+        status_label.config(text=status_text)
 
 def output_template_path(temp_dir, media_title):
     safe_title = media_title.replace("%", "%%")
@@ -518,22 +622,32 @@ def select_output_folder():
     folder_selected = filedialog.askdirectory()
     if folder_selected:
         output_directory = folder_selected
-        folder_label.config(text=f"📁 Save to: {output_directory}")
+        folder_label.config(text=f"Save to: {output_directory}")
+        save_settings()
 
 def set_resolution(value):
     """ Updates the selected resolution. """
     global selected_resolution
     selected_resolution = value
+    if "resolution_menu" in globals():
+        resolution_menu.set(value)
+    save_settings()
     print(f"New Resolution: {selected_resolution}, Value: {value}")
 
 def toggle_audio_mode():
     """ Enables or disables audio-only mode and format selection. """
     if audio_only.get():
-        resolution_dropdown.config(state=tk.DISABLED)  # Disable resolution dropdown
-        audio_format_dropdown.config(state=tk.NORMAL)  # Enable format dropdown
+        resolution_label.grid_remove()
+        resolution_dropdown.grid_remove()
+        audio_format_label.grid()
+        audio_format_dropdown.grid()
     else:
-        resolution_dropdown.config(state=tk.NORMAL)  # Enable resolution dropdown
-        audio_format_dropdown.config(state=tk.DISABLED)  # Disable format dropdown
+        audio_format_label.grid_remove()
+        audio_format_dropdown.grid_remove()
+        resolution_label.grid()
+        resolution_dropdown.grid()
+    set_quality_state(url_ready_for_download)
+    save_settings()
 
 def clean_text(text):
     """ Removes unwanted ANSI escape codes from yt-dlp output. """
@@ -570,6 +684,10 @@ def download_video_gui():
         messagebox.showerror("Error", "Please enter a YouTube URL")
         return
 
+    if not url_ready_for_download:
+        messagebox.showwarning("Link Not Ready", "Please wait until the link has been checked.")
+        return
+
     if download_is_active():
         messagebox.showwarning("Download In Progress", "Please wait for the current download to finish.")
         return
@@ -577,7 +695,7 @@ def download_video_gui():
     download_settings = {
         "url": url,
         "output_dir": output_directory,
-        "resolution": resolution_menu.get() or selected_resolution,
+        "resolution": selected_resolution,
         "is_audio_only": audio_only.get(),
         "audio_format": selected_audio_format.get().lower(),
         "cleanup_enabled": delete_temp_files.get(),
@@ -586,8 +704,8 @@ def download_video_gui():
     download_cancel_event = threading.Event()
 
     # Disable the button to prevent multiple clicks
-    download_button.config(state=tk.DISABLED)
-    status_label.config(text="⏳ Connecting...")
+    set_download_button_enabled(False)
+    status_label.config(text="Connecting...")
 
     # Run the download in a separate thread
     download_thread = threading.Thread(
@@ -606,10 +724,18 @@ def update_resolution_options(*args):
         fetch_delay = None
 
     if not url:
+        fetch_request_id += 1
+        set_link_ready(False, "")
+        if "resolution_menu" in globals():
+            resolution_menu.set(selected_resolution)
+        status_label.config(text="")
         return
 
     fetch_request_id += 1
     request_id = fetch_request_id
+    set_link_ready(False, "Checking link...")
+    if not audio_only.get():
+        resolution_menu.set("Checking...")
     fetch_delay = root.after(500, lambda: start_resolution_fetch(request_id, url))
 
 def start_resolution_fetch(request_id, url):
@@ -619,8 +745,9 @@ def start_resolution_fetch(request_id, url):
     if request_id != fetch_request_id:
         return
 
-    resolution_dropdown.config(state=tk.DISABLED)
-    resolution_menu.set("Fetching...")
+    set_link_ready(False, "Checking link...")
+    if not audio_only.get():
+        resolution_menu.set("Checking...")
 
     threading.Thread(
         target=fetch_resolutions_thread,
@@ -629,22 +756,27 @@ def start_resolution_fetch(request_id, url):
     ).start()
 
 def fetch_resolutions_thread(request_id, url):
-    resolutions = fetch_available_resolutions(url)
-    queue_ui("resolution_results", request_id, url, resolutions)
+    resolutions, error_message = fetch_available_resolutions(url)
+    queue_ui("resolution_results", request_id, url, resolutions, error_message)
 
-def apply_resolution_results(request_id, url, resolutions):
+def apply_resolution_results(request_id, url, resolutions, error_message=None):
     if request_id != fetch_request_id or url != url_entry.get().strip():
         return
 
-    resolution_dropdown["menu"].delete(0, "end")
-    for res in resolutions:
-        resolution_dropdown["menu"].add_command(label=res, command=lambda v=res: set_resolution(v))
+    if error_message:
+        if not audio_only.get():
+            resolution_menu.set("Unavailable")
+        set_link_ready(False, f"Link check failed\n{error_message}")
+        return
 
-    resolution_menu.set(resolutions[0])
-    set_resolution(resolutions[0])
+    if not resolutions:
+        resolutions = ["Highest Available"]
 
-    state = tk.DISABLED if audio_only.get() else tk.NORMAL
-    resolution_dropdown.config(state=state)
+    resolution_dropdown.config(values=resolutions)
+
+    preferred_resolution = selected_resolution if selected_resolution in resolutions else resolutions[0]
+    set_resolution(preferred_resolution)
+    set_link_ready(True, "Ready to download.")
 
 def fetch_available_resolutions(url):
     """ Fetch available video resolutions for a given YouTube URL. """
@@ -658,12 +790,14 @@ def fetch_available_resolutions(url):
                     available_resolutions.add(f"{video_format['height']}p")
 
             # Convert resolutions to integers for proper sorting
-            return sorted(available_resolutions, key=lambda x: int(x.replace("p", "")), reverse=True)
+            resolutions = sorted(available_resolutions, key=lambda x: int(x.replace("p", "")), reverse=True)
+            return resolutions or ["Highest Available"], None
 
 
     except Exception as e:
-        print(f"❌ Error fetching resolutions: {e}")
-        return ["Highest Available"]  # Default if fetching fails
+        error_message = clean_text(str(e)) or e.__class__.__name__
+        print(f"❌ Error fetching resolutions: {error_message}")
+        return [], error_message
 
 def download_video_thread(download_settings, cancel_event):
     """ Runs the video download process in a separate thread. """
@@ -682,17 +816,16 @@ def update_ui_after_download(success, error_message=None, final_path=None):
         return
 
     if success:
-        status_label.config(text="✅ Download Complete!")
+        status_label.config(text="Download complete")
         messagebox.showinfo("Download Complete", f"File saved to:\n{final_path}")
         open_download_folder()
     else:
         details = error_message or "Unknown error"
-        status_label.config(text=f"❌ Download Failed\n{details}")
+        status_label.config(text=f"Download failed\n{details}")
         if details != "Download cancelled":
             messagebox.showerror("Download Failed", details)
 
-    # Re-enable the download button
-    download_button.config(state=tk.NORMAL)
+    set_download_button_enabled(url_ready_for_download)
 
 def download_video(download_settings, cancel_event):
     """ Downloads a YouTube video or extracts audio based on user selection. """
@@ -851,15 +984,116 @@ def sanitize_filename(filename):
 # Function to clear the URL entry box
 def clear_url():
     url_entry.delete(0, tk.END)
-
-# Function to clear the URL entry box
-def fill_in_default_url():
-    clear_url()
-    url_entry.insert(0, default_url)  # Pre-fills the entry box
     update_resolution_options()
+
+def insert_test_url():
+    clear_url()
+    url_entry.insert(0, TEST_URL)
+    update_resolution_options()
+
+def paste_url_from_clipboard():
+    try:
+        clipboard_text = root.clipboard_get().strip()
+    except tk.TclError:
+        messagebox.showwarning("Clipboard Empty", "No text found in the clipboard.")
+        return
+
+    if not clipboard_text:
+        messagebox.showwarning("Clipboard Empty", "No text found in the clipboard.")
+        return
+
+    clear_url()
+    url_entry.insert(0, clipboard_text)
+    update_resolution_options()
+
+def handle_paste_event(event=None):
+    root.after(10, update_resolution_options)
+
+def select_all_url(event=None):
+    url_entry.select_range(0, tk.END)
+    url_entry.icursor(tk.END)
+    return "break"
+
+def delete_previous_word(event=None):
+    cursor_position = url_entry.index(tk.INSERT)
+    text = url_entry.get()
+    start = cursor_position
+
+    while start > 0 and text[start - 1].isspace():
+        start -= 1
+
+    while start > 0 and not text[start - 1].isspace():
+        start -= 1
+
+    if start != cursor_position:
+        url_entry.delete(start, cursor_position)
+        update_resolution_options()
+
+    return "break"
+
+def handle_control_keypress(event):
+    if not event.state & 0x4:
+        return None
+
+    if event.keycode == 65:
+        return select_all_url(event)
+
+    if event.keycode == 86:
+        paste_url_from_clipboard()
+        return "break"
+
+    if event.keysym == "BackSpace" or event.keycode == 8:
+        return delete_previous_word(event)
+
+    return None
+
+def reset_output_folder():
+    global output_directory
+    output_directory = default_output_folder
+    os.makedirs(output_directory, exist_ok=True)
+    folder_label.config(text=f"Save to: {output_directory}")
+    save_settings()
+
+class ToolTip:
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tip_window = None
+        widget.bind("<Enter>", self.show)
+        widget.bind("<Leave>", self.hide)
+
+    def show(self, event=None):
+        if self.tip_window or not self.text:
+            return
+
+        x = self.widget.winfo_rootx() + 20
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 8
+        self.tip_window = tk.Toplevel(self.widget)
+        self.tip_window.wm_overrideredirect(True)
+        self.tip_window.wm_geometry(f"+{x}+{y}")
+
+        label = tk.Label(
+            self.tip_window,
+            text=self.text,
+            justify=tk.LEFT,
+            background="#ffffe0",
+            relief=tk.SOLID,
+            borderwidth=1,
+            padx=6,
+            pady=4,
+            wraplength=280,
+        )
+        label.pack()
+
+    def hide(self, event=None):
+        if self.tip_window:
+            self.tip_window.destroy()
+            self.tip_window = None
 
 def on_close():
     global is_closing
+
+    save_settings()
 
     if download_is_active():
         is_closing = True
@@ -871,95 +1105,204 @@ def on_close():
 
     root.destroy()
 
-# 🖥️ GUI Setup
+# GUI Setup
 root = tk.Tk()
-root.title("YouTube Video Downloader")
-root.geometry("700x760")
+root.title(APP_NAME)
+root.geometry("760x560")
+root.minsize(700, 520)
+set_app_icon(root)
 
-# Variable to store cleanup option
-delete_temp_files = tk.BooleanVar(value=True)  # Default: Enabled
-preserve_upload_date = tk.BooleanVar(value=True)
+try:
+    style = ttk.Style(root)
+    if "vista" in style.theme_names():
+        style.theme_use("vista")
+    style.configure("TButton", padding=(8, 4))
+except tk.TclError:
+    pass
 
-# Variable to store whether "Audio Only" is enabled
-audio_only = tk.BooleanVar(value=False)
-selected_audio_format = tk.StringVar(value="MP3")  # Default format
+delete_temp_files = tk.BooleanVar(value=bool(saved_settings.get("delete_temp_files", True)))
+preserve_upload_date = tk.BooleanVar(value=bool(saved_settings.get("preserve_upload_date", True)))
+audio_only = tk.BooleanVar(value=bool(saved_settings.get("audio_only", False)))
+saved_audio_format = saved_settings.get("audio_format")
+selected_audio_format = tk.StringVar(value=saved_audio_format if saved_audio_format in AUDIO_FORMATS else DEFAULT_AUDIO_FORMAT)
+diagnostics_visible = tk.BooleanVar(value=False)
 
-diagnostics_label = tk.Label(root, text="Diagnostics: checking...", font=("Arial", 9), justify=tk.LEFT, anchor="w", wraplength=660)
-diagnostics_label.pack(pady=8, padx=10, fill=tk.X)
+main_frame = ttk.Frame(root, padding=14)
+main_frame.pack(fill=tk.BOTH, expand=True)
+main_frame.columnconfigure(0, weight=1)
 
-tk.Label(root, text="Enter YouTube URL:", font=("Arial", 12)).pack(pady=5)
+source_frame = ttk.LabelFrame(main_frame, text="Source", padding=10)
+source_frame.grid(row=0, column=0, sticky="ew")
+source_frame.columnconfigure(0, weight=1)
 
-# Create a frame to hold the URL entry and buttons
-url_frame = tk.Frame(root)
-url_frame.pack(pady=5)
+url_frame = ttk.Frame(source_frame)
+url_frame.grid(row=0, column=0, sticky="ew")
+url_frame.columnconfigure(0, weight=1)
 
-# Button to fetch available resolutions
-fetch_resolution_button = tk.Button(url_frame, text="🔍", command=update_resolution_options)
-fetch_resolution_button.pack(side=tk.RIGHT, padx=5)
+url_entry = ttk.Entry(url_frame)
+url_entry.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+url_entry.bind("<KeyRelease>", update_resolution_options)
+url_entry.bind("<<Paste>>", handle_paste_event, add="+")
+url_entry.bind("<Control-KeyPress>", handle_control_keypress)
+url_entry.bind("<Control-a>", select_all_url)
+url_entry.bind("<Control-A>", select_all_url)
+url_entry.bind("<Control-BackSpace>", delete_previous_word)
 
-# Input field for URL (Pre-filled with default URL)
-url_entry = tk.Entry(url_frame, width=50)
-url_entry.pack(side=tk.RIGHT, padx=5)
-url_entry.bind("<KeyRelease>", update_resolution_options)  # **Trigger fetching on URL entry**
-# url_entry.bind("<Control-V>", update_resolution_options)  # ✅ Triggers on paste (Ctrl+V) TODO: STILL TO FIGURE OUT
-# url_entry.bind("<Button-3>", update_resolution_options)  # ✅ Triggers on right-click paste (Windows) TODO: STILL TO FIGURE OUT
+paste_button = ttk.Button(url_frame, text="Paste", command=paste_url_from_clipboard)
+paste_button.grid(row=0, column=1, padx=(0, 6))
 
-# Button to clear the URL field
-clear_button = tk.Button(url_frame, text="🗑️", command=clear_url)
-clear_button.pack(side=tk.LEFT, padx=0)
+clear_button = ttk.Button(url_frame, text="Clear", command=clear_url)
+clear_button.grid(row=0, column=2, padx=(0, 6))
 
-# Button to clear the URL field
-default_url_button = tk.Button(url_frame, text="Default", command=fill_in_default_url)
-default_url_button.pack(side=tk.LEFT, padx=2)
+test_link_button = ttk.Button(url_frame, text="Test", command=insert_test_url)
+test_link_button.grid(row=0, column=3, padx=(0, 6))
 
-# Add "Audio Only" checkbox
-audio_checkbox = tk.Checkbutton(root, text="Audio Only", variable=audio_only, command=toggle_audio_mode)
-audio_checkbox.pack(pady=5)
+fetch_resolution_button = ttk.Button(url_frame, text="Check", command=update_resolution_options)
+fetch_resolution_button.grid(row=0, column=4)
 
-# Dropdown menu for selecting audio format
-tk.Label(root, text="Select Audio Format:", font=("Arial", 10)).pack(pady=5)
-audio_formats = ["MP3", "WAV", "AAC", "FLAC"]
-audio_format_dropdown = tk.OptionMenu(root, selected_audio_format, *audio_formats)
-audio_format_dropdown.pack(pady=5)
-audio_format_dropdown.config(state=tk.DISABLED)  # Initially disabled
+download_frame = ttk.LabelFrame(main_frame, text="Download", padding=10)
+download_frame.grid(row=1, column=0, sticky="ew", pady=(12, 0))
+download_frame.columnconfigure(1, weight=1)
 
-# Dropdown menu for resolution selection
-tk.Label(root, text="Select Resolution:", font=("Arial", 10)).pack(pady=5)
-resolution_options = ["Highest Available", "1080p", "720p", "480p", "360p"]
-resolution_menu = tk.StringVar(root)
-resolution_menu.set(selected_resolution)  # Default value
-resolution_dropdown = tk.OptionMenu(root, resolution_menu, *resolution_options, command=set_resolution)
-resolution_dropdown.pack(pady=5)
+audio_checkbox = ttk.Checkbutton(download_frame, text="Audio only", variable=audio_only, command=toggle_audio_mode)
+audio_checkbox.grid(row=0, column=0, sticky="w", columnspan=2)
 
-# Button to choose output folder
-folder_button = tk.Button(root, text="Choose Folder", command=select_output_folder)
-folder_button.pack(pady=5)
+quality_frame = ttk.Frame(download_frame)
+quality_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+quality_frame.columnconfigure(1, weight=1)
 
-# Label to show selected folder
-folder_label = tk.Label(root, text=f"📁 Save to: {output_directory}", font=("Arial", 10))
-folder_label.pack()
+resolution_options = list(RESOLUTION_OPTIONS)
+if selected_resolution not in resolution_options:
+    resolution_options.insert(1, selected_resolution)
+resolution_menu = tk.StringVar(root, value=selected_resolution)
+resolution_label = ttk.Label(quality_frame, text="Quality")
+resolution_label.grid(row=0, column=0, sticky="w", padx=(0, 10))
+resolution_dropdown = ttk.Combobox(
+    quality_frame,
+    textvariable=resolution_menu,
+    values=resolution_options,
+    state="disabled",
+    width=22,
+)
+resolution_dropdown.grid(row=0, column=1, sticky="w")
+resolution_dropdown.bind("<<ComboboxSelected>>", lambda event: set_resolution(resolution_menu.get()))
 
-open_folder_button = tk.Button(root, text="Open Download Folder", command=open_download_folder)
-open_folder_button.pack(pady=5)
+audio_format_label = ttk.Label(quality_frame, text="Format")
+audio_format_label.grid(row=0, column=0, sticky="w", padx=(0, 10))
+audio_format_dropdown = ttk.Combobox(
+    quality_frame,
+    textvariable=selected_audio_format,
+    values=AUDIO_FORMATS,
+    state="disabled",
+    width=22,
+)
+audio_format_dropdown.grid(row=0, column=1, sticky="w")
+audio_format_dropdown.bind("<<ComboboxSelected>>", lambda event: save_settings())
 
-# Add a checkbox for cleaning up temp files
-cleanup_checkbox = tk.Checkbutton(root, text="Delete Temp Files After Download", variable=delete_temp_files)
-cleanup_checkbox.pack(pady=5)
+options_frame = ttk.Frame(download_frame)
+options_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(10, 0))
 
-timestamp_checkbox = tk.Checkbutton(root, text="Preserve Upload Date", variable=preserve_upload_date)
-timestamp_checkbox.pack(pady=5)
+cleanup_checkbox = ttk.Checkbutton(
+    options_frame,
+    text="Delete temp files after download",
+    variable=delete_temp_files,
+    command=save_settings,
+)
+cleanup_checkbox.grid(row=0, column=0, sticky="w", padx=(0, 18))
 
-# Download button
-download_button = tk.Button(root, text="Download", command=download_video_gui)
-download_button.pack(pady=10)
+timestamp_checkbox = ttk.Checkbutton(
+    options_frame,
+    text="Preserve upload date",
+    variable=preserve_upload_date,
+    command=save_settings,
+)
+timestamp_checkbox.grid(row=0, column=1, sticky="w")
+ToolTip(timestamp_checkbox, "When enabled, downloaded files use the video's upload date for file timestamps. Turn it off to keep today's download time.")
+ToolTip(test_link_button, "Insert a tiny test video link.")
 
-# Status label
-status_label = tk.Label(root, text="", font=("Arial", 10), wraplength=660, justify=tk.LEFT)
-status_label.pack()
+destination_frame = ttk.LabelFrame(main_frame, text="Destination", padding=10)
+destination_frame.grid(row=2, column=0, sticky="ew", pady=(12, 0))
+destination_frame.columnconfigure(0, weight=1)
 
+folder_label = ttk.Label(destination_frame, text=f"Save to: {output_directory}", wraplength=680)
+folder_label.grid(row=0, column=0, columnspan=3, sticky="ew")
+
+folder_button = ttk.Button(destination_frame, text="Choose Folder", command=select_output_folder)
+folder_button.grid(row=1, column=0, sticky="w", pady=(8, 0), padx=(0, 6))
+
+default_folder_button = ttk.Button(destination_frame, text="Use Downloads", command=reset_output_folder)
+default_folder_button.grid(row=1, column=1, sticky="w", pady=(8, 0), padx=(0, 6))
+
+open_folder_button = ttk.Button(destination_frame, text="Open Folder", command=open_download_folder)
+open_folder_button.grid(row=1, column=2, sticky="w", pady=(8, 0))
+
+actions_frame = ttk.Frame(main_frame)
+actions_frame.grid(row=3, column=0, sticky="ew", pady=(14, 0))
+actions_frame.columnconfigure(0, weight=1)
+
+download_button = tk.Button(
+    actions_frame,
+    text="Download",
+    command=download_video_gui,
+    bg="#1f8f4d",
+    fg="white",
+    activebackground="#18743f",
+    activeforeground="white",
+    disabledforeground="#d8e9df",
+    padx=28,
+    pady=6,
+    relief=tk.RAISED,
+    cursor="hand2",
+)
+download_button.grid(row=0, column=0)
+
+status_frame = ttk.LabelFrame(main_frame, text="Status", padding=10)
+status_frame.grid(row=4, column=0, sticky="nsew", pady=(12, 0))
+status_frame.columnconfigure(0, weight=1)
+status_frame.rowconfigure(2, weight=1)
+main_frame.rowconfigure(4, weight=1)
+
+status_label = ttk.Label(status_frame, text="", wraplength=680, justify=tk.LEFT)
+status_label.grid(row=0, column=0, sticky="ew")
+
+diagnostics_header = ttk.Frame(status_frame)
+diagnostics_header.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+diagnostics_header.columnconfigure(1, weight=1)
+
+diagnostics_button = ttk.Button(
+    diagnostics_header,
+    text="Show Diagnostics",
+    command=toggle_diagnostics,
+)
+diagnostics_button.grid(row=0, column=0, sticky="w", padx=(0, 8))
+
+diagnostics_summary_label = ttk.Label(diagnostics_header, text="Diagnostics: checking...")
+diagnostics_summary_label.grid(row=0, column=1, sticky="w")
+
+diagnostics_panel = ttk.Frame(status_frame)
+diagnostics_panel.grid(row=2, column=0, sticky="nsew", pady=(6, 0))
+diagnostics_panel.columnconfigure(0, weight=1)
+diagnostics_panel.rowconfigure(0, weight=1)
+
+diagnostics_text = tk.Text(
+    diagnostics_panel,
+    height=6,
+    wrap=tk.WORD,
+    borderwidth=1,
+    relief=tk.SOLID,
+    font=("Consolas", 9),
+)
+diagnostics_text.grid(row=0, column=0, sticky="nsew")
+
+diagnostics_scrollbar = ttk.Scrollbar(diagnostics_panel, orient=tk.VERTICAL, command=diagnostics_text.yview)
+diagnostics_scrollbar.grid(row=0, column=1, sticky="ns")
+diagnostics_text.configure(yscrollcommand=diagnostics_scrollbar.set, state=tk.DISABLED)
+hide_diagnostics()
+
+toggle_audio_mode()
+set_link_ready(False)
 root.protocol("WM_DELETE_WINDOW", on_close)
 process_ui_queue()
 run_startup_diagnostics_async()
 
-# Run GUI
 root.mainloop()

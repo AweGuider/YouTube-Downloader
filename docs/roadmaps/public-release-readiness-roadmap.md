@@ -19,6 +19,8 @@ Fix distribution and diagnostics first, because public users need the app to sta
 
 - 2026-08-24: Phase 1 passed. The build baseline now resolves and bundles `ffmpeg`, `ffprobe`, and a JavaScript runtime, includes dependency/build metadata, and produced an EXE that was confirmed to run on another Windows device. Remaining release risk: bundled binary licensing still needs documentation before public release.
 - 2026-08-24: Phase 2 passed for source-run validation. Startup diagnostics report app/dependency/network/temp status in the GUI with `9 OK, 0 warning(s), 0 failure(s)`, and download failures now surface the real error. Remaining release risk: diagnostics need EXE validation after the local Tcl/Tk build environment is repaired.
+- 2026-08-24: Phase 3 passed. Video download, repeated same-URL download, audio-only MP3, failure cleanup, and close-during-download behavior were manually verified. UI follow-up discovered during validation: fetched resolution choices can apply correctly under the hood while the dropdown display stays on the previously shown highest option.
+- 2026-08-24: Phase 4 passed. The public UI now has grouped controls, paste/test-link actions, mode-aware quality/format controls, a compact diagnostics panel, saved settings, an app icon, and fixed URL-field keyboard shortcuts.
 
 ## Phase 1: Reproducible Packaging Baseline
 

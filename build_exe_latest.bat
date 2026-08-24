@@ -4,6 +4,7 @@ setlocal enabledelayedexpansion
 title YouTube Downloader Build Script
 
 set "SOURCE=downloader.py"
+set "ICON_PATH=assets\app.ico"
 
 :: === Prompt for App Name ===
 set /p "FILE_NAME=Enter executable name (default: YouTubeDownloader): "
@@ -34,6 +35,12 @@ set "LOG_FILE=build_log_!LOG_TIMESTAMP!.txt"
 
 if not exist "%SOURCE%" (
     echo Source file not found: %SOURCE%
+    pause
+    exit /b 1
+)
+
+if not exist "%ICON_PATH%" (
+    echo App icon not found: %ICON_PATH%
     pause
     exit /b 1
 )
@@ -119,6 +126,8 @@ python -m PyInstaller ^
     --onefile ^
     --windowed ^
     --name "%FILE_NAME%" ^
+    --icon "%ICON_PATH%" ^
+    --add-data "%ICON_PATH%;assets" ^
     --add-binary "%FFMPEG_PATH%;." ^
     --add-binary "%FFPROBE_PATH%;." ^
     --add-binary "%JS_RUNTIME_PATH%;." ^
